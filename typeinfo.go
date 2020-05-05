@@ -6,31 +6,28 @@ import (
 	"sync"
 )
 
-// typeInfo holds details for the plist representation of a type.
-type typeInfo struct {
-	fields []fieldInfo
+// TypeInfo holds details for the plist representation of a type.
+type TypeInfo struct {
+	Fields []FieldInfo
 }
 
-// fieldInfo holds details for the plist representation of a single field.
-type fieldInfo struct {
+// FieldInfo holds details for the plist representation of a single field.
+type FieldInfo struct {
 	idx       []int
-	name      string
-	omitEmpty bool
+	Name      string
+	OmitEmpty bool
 }
 
-var tinfoMap = make(map[reflect.Type]*typeInfo)
-var tinfoLock sync.RWMutex
+var tinfoMap = &sync.Map{} //make(map[reflect.Type]*typeInfo)
 
-// getTypeInfo returns the typeInfo structure with details necessary
+// GetTypeInfo returns the typeInfo structure with details necessary
 // for marshalling and unmarshalling typ.
-func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
-	tinfoLock.RLock()
-	tinfo, ok := tinfoMap[typ]
-	tinfoLock.RUnlock()
+func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
+	ltinfo, ok := tinfoMap.Load(typ)
 	if ok {
-		return tinfo, nil
+		return ltinfo.(*TypeInfo), nil
 	}
-	tinfo = &typeInfo{}
+	tinfo := &TypeInfo{}
 	if typ.Kind() == reflect.Struct {
 		n := typ.NumField()
 		for i := 0; i < n; i++ {
@@ -46,11 +43,11 @@ func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
 					t = t.Elem()
 				}
 				if t.Kind() == reflect.Struct {
-					inner, err := getTypeInfo(t)
+					inner, err := GetTypeInfo(t)
 					if err != nil {
 						return nil, err
 					}
-					for _, finfo := range inner.fields {
+					for _, finfo := range inner.Fields {
 						finfo.idx = append([]int{i}, finfo.idx...)
 						if err := addFieldInfo(typ, tinfo, &finfo); err != nil {
 							return nil, err
@@ -71,19 +68,15 @@ func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
 			}
 		}
 	}
-	tinfoLock.Lock()
-	tinfoMap[typ] = tinfo
-	tinfoLock.Unlock()
+	tinfoMap.Store(typ, tinfo)
 	return tinfo, nil
 }
 
 // structFieldInfo builds and returns a fieldInfo for f.
-func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*fieldInfo, error) {
-	finfo := &fieldInfo{idx: f.Index}
-
+func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*FieldInfo, error) {
+	finfo := &FieldInfo{idx: f.Index}
 	// Split the tag from the xml namespace if necessary.
 	tag := f.Tag.Get("plist")
-
 	// Parse flags.
 	tokens := strings.Split(tag, ",")
 	tag = tokens[0]
@@ -92,19 +85,17 @@ func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*fieldInfo, erro
 		for _, flag := range tokens[1:] {
 			switch flag {
 			case "omitempty":
-				finfo.omitEmpty = true
+				finfo.OmitEmpty = true
 			}
 		}
 	}
-
 	if tag == "" {
 		// If the name part of the tag is completely empty,
 		// use the field name
-		finfo.name = f.Name
+		finfo.Name = f.Name
 		return finfo, nil
 	}
-
-	finfo.name = tag
+	finfo.Name = tag
 	return finfo, nil
 }
 
@@ -115,26 +106,26 @@ func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*fieldInfo, erro
 // A conflict occurs when the path (parent + name) to a field is
 // itself a prefix of another path, or when two paths match exactly.
 // It is okay for field paths to share a common, shorter prefix.
-func addFieldInfo(typ reflect.Type, tinfo *typeInfo, newf *fieldInfo) error {
+func addFieldInfo(typ reflect.Type, tinfo *TypeInfo, newf *FieldInfo) error {
 	var conflicts []int
 	// First, figure all conflicts. Most working code will have none.
-	for i := range tinfo.fields {
-		oldf := &tinfo.fields[i]
-		if newf.name == oldf.name {
+	for i := range tinfo.Fields {
+		oldf := &tinfo.Fields[i]
+		if newf.Name == oldf.Name {
 			conflicts = append(conflicts, i)
 		}
 	}
 
 	// Without conflicts, add the new field and return.
 	if conflicts == nil {
-		tinfo.fields = append(tinfo.fields, *newf)
+		tinfo.Fields = append(tinfo.Fields, *newf)
 		return nil
 	}
 
 	// If any conflict is shallower, ignore the new field.
 	// This matches the Go field resolution on embedding.
 	for _, i := range conflicts {
-		if len(tinfo.fields[i].idx) < len(newf.idx) {
+		if len(tinfo.Fields[i].idx) < len(newf.idx) {
 			return nil
 		}
 	}
@@ -143,17 +134,17 @@ func addFieldInfo(typ reflect.Type, tinfo *typeInfo, newf *fieldInfo) error {
 	// so drop the conflicting fields from tinfo and append the new one.
 	for c := len(conflicts) - 1; c >= 0; c-- {
 		i := conflicts[c]
-		copy(tinfo.fields[i:], tinfo.fields[i+1:])
-		tinfo.fields = tinfo.fields[:len(tinfo.fields)-1]
+		copy(tinfo.Fields[i:], tinfo.Fields[i+1:])
+		tinfo.Fields = tinfo.Fields[:len(tinfo.Fields)-1]
 	}
-	tinfo.fields = append(tinfo.fields, *newf)
+	tinfo.Fields = append(tinfo.Fields, *newf)
 	return nil
 }
 
-// value returns v's field value corresponding to finfo.
+// Value returns v's field value corresponding to finfo.
 // It's equivalent to v.FieldByIndex(finfo.idx), but initializes
 // and dereferences pointers as necessary.
-func (finfo *fieldInfo) value(v reflect.Value) reflect.Value {
+func (finfo *FieldInfo) Value(v reflect.Value) reflect.Value {
 	for i, x := range finfo.idx {
 		if i > 0 {
 			t := v.Type()

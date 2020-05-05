@@ -234,7 +234,7 @@ func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) {
 	typ := val.Type()
 	switch val.Kind() {
 	case reflect.Struct:
-		tinfo, err := getTypeInfo(typ)
+		tinfo, err := GetTypeInfo(typ)
 		if err != nil {
 			panic(err)
 		}
@@ -245,8 +245,8 @@ func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) {
 			entries[k] = sval
 		}
 
-		for _, finfo := range tinfo.fields {
-			p.unmarshal(entries[finfo.name], finfo.value(val))
+		for _, finfo := range tinfo.Fields {
+			p.unmarshal(entries[finfo.Name], finfo.Value(val))
 		}
 	case reflect.Map:
 		if val.IsNil() {

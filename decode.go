@@ -23,7 +23,14 @@ type Decoder struct {
 // Decode works like Unmarshal, except it reads the decoder stream to find property list elements.
 //
 // After Decoding, the Decoder's Format field will be set to one of the plist format constants.
-func (p *Decoder) Decode(v interface{}) (err error) {
+func (p *Decoder) Decode(v interface{}) error {
+	return p.DecodeForReflect(reflect.ValueOf(v))
+}
+
+// DecodeForReflect works like Unmarshal, except it reads the decoder stream to find property list elements.
+//
+// After Decoding, the Decoder's Format field will be set to one of the plist format constants.
+func (p *Decoder) DecodeForReflect(refv reflect.Value) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(runtime.Error); ok {
@@ -73,7 +80,7 @@ func (p *Decoder) Decode(v interface{}) (err error) {
 		}
 	}
 
-	p.unmarshal(pval, reflect.ValueOf(v))
+	p.unmarshal(pval, refv)
 	return
 }
 

@@ -63,18 +63,18 @@ func (p *Encoder) marshalTextInterface(marshalable encoding.TextMarshaler) cfVal
 
 // marshalStruct marshals a reflected struct value to a plist dictionary
 func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
-	tinfo, _ := getTypeInfo(typ)
+	tinfo, _ := GetTypeInfo(typ)
 
 	dict := &cfDictionary{
-		keys:   make([]string, 0, len(tinfo.fields)),
-		values: make([]cfValue, 0, len(tinfo.fields)),
+		keys:   make([]string, 0, len(tinfo.Fields)),
+		values: make([]cfValue, 0, len(tinfo.Fields)),
 	}
-	for _, finfo := range tinfo.fields {
-		value := finfo.value(val)
-		if !value.IsValid() || finfo.omitEmpty && isEmptyValue(value) {
+	for _, finfo := range tinfo.Fields {
+		value := finfo.Value(val)
+		if !value.IsValid() || finfo.OmitEmpty && isEmptyValue(value) {
 			continue
 		}
-		dict.keys = append(dict.keys, finfo.name)
+		dict.keys = append(dict.keys, finfo.Name)
 		dict.values = append(dict.values, p.marshal(value))
 	}
 
@@ -112,13 +112,16 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 	}
 
 	// Descend into pointers or interfaces
-	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
+	if val.Kind() == reflect.Interface && val.NumMethod() == 0 {
+		val = val.Elem()
+	}
+	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 
 	// We got this far and still may have an invalid anything or nil ptr/interface
 	if !val.IsValid() || ((val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && val.IsNil()) {
-		return nil
+		return &cfDictionary{}
 	}
 
 	typ := val.Type()

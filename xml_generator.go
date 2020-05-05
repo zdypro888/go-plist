@@ -50,10 +50,17 @@ func (p *xmlPlistGenerator) generateDocument(root cfValue) {
 	p.WriteString(xmlHEADER)
 	p.WriteString(xmlDOCTYPE)
 
-	p.openTag(`plist version="1.0"`)
+	p.WriteString("<plist version=\"1.0\">\n")
 	p.writePlistValue(root)
-	p.closeTag(xmlPlistTag)
+	p.WriteString("\n</plist>")
 	p.Flush()
+}
+
+func (p *xmlPlistGenerator) nilTag(n string) {
+	p.writeIndent(0)
+	p.WriteByte('<')
+	p.WriteString(n)
+	p.WriteString(" />")
 }
 
 func (p *xmlPlistGenerator) openTag(n string) {
@@ -94,20 +101,28 @@ func (p *xmlPlistGenerator) element(n string, v string) {
 
 func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) {
 	dict.sort()
-	p.openTag(xmlDictTag)
-	for i, k := range dict.keys {
-		p.element(xmlKeyTag, k)
-		p.writePlistValue(dict.values[i])
+	if len(dict.keys) == 0 {
+		p.nilTag(xmlDictTag)
+	} else {
+		p.openTag(xmlDictTag)
+		for i, k := range dict.keys {
+			p.element(xmlKeyTag, k)
+			p.writePlistValue(dict.values[i])
+		}
+		p.closeTag(xmlDictTag)
 	}
-	p.closeTag(xmlDictTag)
 }
 
 func (p *xmlPlistGenerator) writeArray(a *cfArray) {
-	p.openTag(xmlArrayTag)
-	for _, v := range a.values {
-		p.writePlistValue(v)
+	if len(a.values) == 0 {
+		p.nilTag(xmlDictTag)
+	} else {
+		p.openTag(xmlArrayTag)
+		for _, v := range a.values {
+			p.writePlistValue(v)
+		}
+		p.closeTag(xmlArrayTag)
 	}
-	p.closeTag(xmlArrayTag)
 }
 
 func (p *xmlPlistGenerator) writePlistValue(pval cfValue) {
