@@ -32,7 +32,7 @@ func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
 		n := typ.NumField()
 		for i := 0; i < n; i++ {
 			f := typ.Field(i)
-			if f.PkgPath != "" || f.Tag.Get("plist") == "-" {
+			if f.Tag.Get("plist") == "-" || (!f.Anonymous && f.PkgPath != "") {
 				continue // Private field
 			}
 
