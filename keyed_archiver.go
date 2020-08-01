@@ -22,8 +22,8 @@ const (
 )
 
 type archiverDate struct {
-	Time  int64 `plist:"NS.time"`
-	Class UID   `plist:"$class"`
+	Time  float64 `plist:"NS.time"`
+	Class UID     `plist:"$class"`
 }
 type archiverData struct {
 	Data  []byte `plist:"NS.data"`
@@ -265,7 +265,7 @@ func (a *Archiver) unmarshalDate(pval map[string]interface{}, val reflect.Value)
 	if err := Dictionary(pval).Unmarshal(date); err != nil {
 		return err
 	}
-	vt := time.Unix(date.Time+unixToCocoa, 0)
+	vt := time.Unix(int64(date.Time)+unixToCocoa, 0)
 	val.Set(reflect.ValueOf(vt))
 	return nil
 }
@@ -417,7 +417,7 @@ func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
 	case reflect.Struct:
 		if val.Type() == archiverDateType {
 			date := &archiverDate{}
-			date.Time = val.Interface().(time.Time).Unix() - unixToCocoa
+			date.Time = float64(val.Interface().(time.Time).Unix() - unixToCocoa)
 			date.Class = a.addObject(archiverDateClass)
 			return a.addObject(date), nil
 		}
