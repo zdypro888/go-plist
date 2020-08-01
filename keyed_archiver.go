@@ -8,11 +8,23 @@ import (
 	"io"
 	"io/ioutil"
 	"reflect"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	uuid "github.com/satori/go.uuid"
 )
 
+const (
+	secondsPerMinute       = 60
+	secondsPerHour         = 60 * secondsPerMinute
+	secondsPerDay          = 24 * secondsPerHour
+	unixToCocoa      int64 = (31*365 + 31/4 + 1) * secondsPerDay
+)
+
+type archiverDate struct {
+	Time  int64 `plist:"NS.time"`
+	Class UID   `plist:"$class"`
+}
 type archiverData struct {
 	Data  []byte `plist:"NS.data"`
 	Class UID    `plist:"$class"`
@@ -37,6 +49,9 @@ var (
 	archiverMutableArrayClass      = &archiverClass{ClassName: "NSMutableArray", Classes: []string{"NSMutableArray", "NSArray", "NSObject"}}
 	archiverArrayClass             = &archiverClass{ClassName: "NSArray", Classes: []string{"NSArray", "NSObject"}}
 	archiverMutableDataClass       = &archiverClass{ClassName: "NSMutableData", Classes: []string{"NSMutableData", "NSData", "NSObject"}}
+
+	archiverDateType  = reflect.TypeOf((*time.Time)(nil)).Elem()
+	archiverDateClass = &archiverClass{ClassName: "NSDate", Classes: []string{"NSDate", "NSObject"}}
 
 	archiverUUIDType  = reflect.TypeOf((*uuid.UUID)(nil)).Elem()
 	archiverUUIDClass = &archiverClass{ClassName: "NSUUID", Classes: []string{"NSUUID", "NSObject"}}
@@ -67,6 +82,9 @@ func (mcac *archiverClass) isData() bool {
 }
 func (mcac *archiverClass) isUUID() bool {
 	return mcac.ClassName == "NSUUID"
+}
+func (mcac *archiverClass) isDate() bool {
+	return mcac.ClassName == "NSDate"
 }
 
 type archiverTop struct {
@@ -221,6 +239,9 @@ func (a *Archiver) unmarshal(v interface{}, val reflect.Value) error {
 			if class.isDictionary() {
 				return a.unmarshalStruct(pval, val)
 			}
+			if class.isDate() && val.Type() == archiverDateType {
+				return a.unmarshalDate(pval, val)
+			}
 			if class.isUUID() && val.Type() == archiverUUIDType {
 				return a.unmarshalUUID(pval, val)
 			}
@@ -238,6 +259,15 @@ func (a *Archiver) unmarshalMap(pval map[string]interface{}, val reflect.Value) 
 	for k, v := range pval {
 		val.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 	}
+}
+func (a *Archiver) unmarshalDate(pval map[string]interface{}, val reflect.Value) error {
+	date := &archiverDate{}
+	if err := Dictionary(pval).Unmarshal(date); err != nil {
+		return err
+	}
+	vt := time.Unix(date.Time+unixToCocoa, 0)
+	val.Set(reflect.ValueOf(vt))
+	return nil
 }
 func (a *Archiver) unmarshalData(pval map[string]interface{}, val reflect.Value) error {
 	data := &archiverData{}
@@ -385,6 +415,12 @@ func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
 		}
 		return nil, fmt.Errorf("unknow array: %v", val.Type())
 	case reflect.Struct:
+		if val.Type() == archiverDateType {
+			date := &archiverDate{}
+			date.Time = val.Interface().(time.Time).Unix() - unixToCocoa
+			date.Class = a.addObject(archiverDateClass)
+			return a.addObject(date), nil
+		}
 		return a.marshalStruct(val)
 	}
 	return nil, fmt.Errorf("unknow type: %v", val.Type())
