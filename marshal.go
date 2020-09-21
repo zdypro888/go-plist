@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-func isEmptyValue(v reflect.Value) bool {
+//IsEmptyValue is empty value for omitempty
+func IsEmptyValue(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
 		return v.Len() == 0
