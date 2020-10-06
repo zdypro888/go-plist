@@ -72,7 +72,7 @@ func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
 	}
 	for _, finfo := range tinfo.Fields {
 		value := finfo.Value(val)
-		if !value.IsValid() || finfo.OmitEmpty && IsEmptyValue(value) {
+		if !value.IsValid() || (finfo.OmitEmpty && IsEmptyValue(value)) {
 			continue
 		}
 		dict.keys = append(dict.keys, finfo.Name)
