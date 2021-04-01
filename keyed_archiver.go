@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -475,4 +476,129 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 		table.Class = a.addObject(archiverMutableDictionaryClass)
 	}
 	return a.addObject(table), nil
+}
+
+//Unmarshal 序列化
+func (a *Archiver) Print() string {
+	return a.printObject(a.Objects[a.Top.Root])
+}
+
+func (a *Archiver) printObject(v interface{}) string {
+	switch pval := v.(type) {
+	case string:
+		return fmt.Sprintf("string(%v)", pval)
+	case int64:
+		return fmt.Sprintf("int64(%v)", pval)
+	case uint64:
+		return fmt.Sprintf("uint64(%v)", pval)
+	case float32:
+		return fmt.Sprintf("float32(%v)", pval)
+	case float64:
+		return fmt.Sprintf("float64(%v)", pval)
+	case bool:
+		return fmt.Sprintf("bool(%v)", pval)
+	case []byte:
+		return fmt.Sprintf("[]byte(%x)", pval)
+	case UID:
+		return a.printObject(a.Objects[pval])
+		// return fmt.Sprintf("UID(%v)", pval)
+	case []interface{}:
+		return a.printSlice(pval)
+	case map[string]interface{}:
+		class, err := a.getClass(pval)
+		if err != nil {
+			panic(err)
+		}
+		if class.isDate() {
+			return a.printDate(pval)
+		}
+		if class.isData() {
+			return a.printData(pval)
+		}
+		if class.isArray() {
+			return a.printArray(pval)
+		}
+		if class.isUUID() {
+			return a.printUUID(pval)
+		}
+		if class.isDictionary() {
+			return a.printStruct(pval)
+		}
+		return a.printNSType(pval)
+	default:
+		return fmt.Sprintf("unknow : %v", pval)
+	}
+}
+
+func (a *Archiver) printDate(pval map[string]interface{}) string {
+	date := &archiverDate{}
+	if err := Dictionary(pval).Unmarshal(date); err != nil {
+		panic(err)
+	}
+	vt := time.Unix(int64(date.Time)+unixToCocoa, 0)
+	return fmt.Sprintf("time(%v)", vt)
+}
+func (a *Archiver) printData(pval map[string]interface{}) string {
+	data := &archiverData{}
+	if err := Dictionary(pval).Unmarshal(data); err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("[]byte(%x)", data.Data)
+}
+func (a *Archiver) printUUID(pval map[string]interface{}) string {
+	uid := &archiverUUID{}
+	if err := Dictionary(pval).Unmarshal(uid); err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("UID(%x)", uid.Bytes)
+}
+func (a *Archiver) printSlice(array []interface{}) string {
+	builder := &strings.Builder{}
+	builder.WriteString("[]interface{\n")
+	for i, v := range array {
+		builder.WriteString(fmt.Sprintf("\t[%d]: %s\n", i, a.printObject(v)))
+	}
+	builder.WriteString("}")
+	return builder.String()
+}
+func (a *Archiver) printArray(dict map[string]interface{}) string {
+	arr := &archiverArray{}
+	if err := Dictionary(dict).Unmarshal(arr); err != nil {
+		panic(err)
+	}
+	builder := &strings.Builder{}
+	builder.WriteString("[]array{\n")
+	for i, v := range arr.Objects {
+		builder.WriteString(fmt.Sprintf("\t[%d]: %s\n", i, a.printObject(v)))
+	}
+	builder.WriteString("}")
+	return builder.String()
+}
+func (a *Archiver) printNSType(pval map[string]interface{}) string {
+	builder := &strings.Builder{}
+	builder.WriteString("NS{\n")
+	for k, v := range pval {
+		builder.WriteString(fmt.Sprintf("\t[%s]: %s\n", k, a.printObject(v)))
+	}
+	builder.WriteString("}")
+	return builder.String()
+}
+func (a *Archiver) printStruct(dict map[string]interface{}) string {
+	tab := &archiverTable{}
+	if err := Dictionary(dict).Unmarshal(tab); err != nil {
+		panic(err)
+	}
+	kvs := make(map[string]interface{})
+	for i, keyI := range tab.Keys {
+		key := a.Objects[keyI].(string)
+		value := a.printObject(tab.Objects[i])
+		kvs[key] = value
+	}
+	builder := &strings.Builder{}
+	builder.WriteString("struct{\n")
+	for k, v := range kvs {
+		builder.WriteString(fmt.Sprintf("\t[%s]: %s\n", k, v))
+	}
+	builder.WriteString("}")
+	return builder.String()
 }
