@@ -378,7 +378,6 @@ func (a *Archiver) Marshal(v interface{}) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
-
 func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
@@ -396,9 +395,9 @@ func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
 	case reflect.Uint64, reflect.Uintptr:
 		return a.addObject(val.Uint()), nil
 	case reflect.Float32, reflect.Float64:
-		return val.Float(), nil
+		return a.addObject(val.Float()), nil
 	case reflect.Bool:
-		return val.Bool(), nil
+		return a.addObject(val.Bool()), nil
 	case reflect.String:
 		str := val.String()
 		if str == "$null" {
@@ -529,7 +528,6 @@ func (a *Archiver) printObject(v interface{}) string {
 		return fmt.Sprintf("unknow : %v", pval)
 	}
 }
-
 func (a *Archiver) printDate(pval map[string]interface{}) string {
 	date := &archiverDate{}
 	if err := Dictionary(pval).Unmarshal(date); err != nil {
