@@ -89,7 +89,7 @@ func (mcac *archiverClass) isDate() bool {
 }
 
 type archiverTop struct {
-	Root UID `plist:"root"`
+	Root UID `plist:"root"` //或着$0
 }
 
 //Archiver 序列化
@@ -370,7 +370,7 @@ func (a *Archiver) Marshal(v interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.Top = &archiverTop{Root: index.(UID)}
+	a.Top = &archiverTop{Root: index}
 	buf := &bytes.Buffer{}
 	encoder := NewEncoderForFormat(buf, BinaryFormat)
 	if err = encoder.Encode(a); err != nil {
@@ -378,20 +378,20 @@ func (a *Archiver) Marshal(v interface{}) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
-func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
+func (a *Archiver) marshal(val reflect.Value) (UID, error) {
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
-			return nil, errArchiverNilElem
+			return UID(0), errArchiverNilElem
 		}
 		val = val.Elem()
 	}
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32:
-		return val.Int(), nil
+		return a.addObject(val.Int()), nil
 	case reflect.Int64:
 		return a.addObject(val.Int()), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
-		return val.Uint(), nil
+		return a.addObject(val.Uint()), nil
 	case reflect.Uint64, reflect.Uintptr:
 		return a.addObject(val.Uint()), nil
 	case reflect.Float32, reflect.Float64:
@@ -413,7 +413,7 @@ func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
 			uid.Class = a.addObject(archiverUUIDClass)
 			return a.addObject(uid), nil
 		}
-		return nil, fmt.Errorf("unknow array: %v", val.Type())
+		return 0, fmt.Errorf("unknow array: %v", val.Type())
 	case reflect.Struct:
 		if val.Type() == archiverDateType {
 			date := &archiverDate{}
@@ -423,7 +423,7 @@ func (a *Archiver) marshal(val reflect.Value) (interface{}, error) {
 		}
 		return a.marshalStruct(val)
 	}
-	return nil, fmt.Errorf("unknow type: %v", val.Type())
+	return UID(0), fmt.Errorf("unknow type: %v", val.Type())
 }
 func (a *Archiver) marshalSlice(val reflect.Value) (UID, error) {
 	if val.Type().Elem().Kind() == reflect.Uint8 {
@@ -434,11 +434,11 @@ func (a *Archiver) marshalSlice(val reflect.Value) (UID, error) {
 	}
 	arr := &archiverArray{}
 	for i := 0; i < val.Len(); i++ {
-		vi, err := a.marshal(val.Index(i))
+		valueIndex, err := a.marshal(val.Index(i))
 		if err != nil {
 			return 0, err
 		}
-		arr.Objects = append(arr.Objects, vi)
+		arr.Objects = append(arr.Objects, valueIndex)
 	}
 	arr.Class = a.addObject(archiverMutableArrayClass)
 	return a.addObject(arr), nil
@@ -452,18 +452,18 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 	if class, ok := archiverClasses[typ]; ok {
 		nsobj := make(map[string]interface{})
 		for _, ti := range tinfo.Fields {
-			vuid, err := a.marshal(ti.Value(val))
+			valueIndex, err := a.marshal(ti.Value(val))
 			if err != nil {
 				return 0, err
 			}
-			nsobj[ti.Name] = vuid
+			nsobj[ti.Name] = valueIndex
 		}
 		nsobj["$class"] = a.addObject(class)
 		return a.addObject(nsobj), nil
 	}
 	table := &archiverTable{}
 	for _, ti := range tinfo.Fields {
-		vi, err := a.marshal(ti.Value(val))
+		valueIndex, err := a.marshal(ti.Value(val))
 		if err != nil {
 			if err == errArchiverNilElem && ti.OmitEmpty {
 				continue
@@ -471,9 +471,9 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 			return 0, err
 		}
 		table.Keys = append(table.Keys, a.addObject(ti.Name))
-		table.Objects = append(table.Objects, vi)
-		table.Class = a.addObject(archiverMutableDictionaryClass)
+		table.Objects = append(table.Objects, valueIndex)
 	}
+	table.Class = a.addObject(archiverMutableDictionaryClass)
 	return a.addObject(table), nil
 }
 
