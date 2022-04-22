@@ -160,6 +160,16 @@ var tests = []TestData{
 		},
 	},
 	{
+		Name:  "String containing apostrophe",
+		Value: "'",
+		Documents: map[int][]byte{
+			OpenStepFormat: []byte(`"'"`),
+			GNUStepFormat:  []byte(`"'"`),
+			XMLFormat:      []byte(xmlPreamble + `<plist version="1.0"><string>&#39;</string></plist>`),
+			BinaryFormat:   []byte{98, 112, 108, 105, 115, 116, 48, 48, 81, 39, 8, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10},
+		},
+	},
+	{
 		Name: "Basic Structure",
 		Value: struct {
 			Name string
@@ -1050,5 +1060,5 @@ func init() {
 	setupPlistValues()
 
 	// Pre-warm the type info struct to remove it from benchmarking
-	GetTypeInfo(reflect.ValueOf(plistValueTreeRawData).Type())
+	getTypeInfo(reflect.ValueOf(plistValueTreeRawData).Type())
 }

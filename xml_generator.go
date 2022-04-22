@@ -50,9 +50,9 @@ func (p *xmlPlistGenerator) generateDocument(root cfValue) {
 	p.WriteString(xmlHEADER)
 	p.WriteString(xmlDOCTYPE)
 
-	p.WriteString("<plist version=\"1.0\">\n")
+	p.openTag(`plist version="1.0"`)
 	p.writePlistValue(root)
-	p.WriteString("\n</plist>")
+	p.closeTag(xmlPlistTag)
 	p.Flush()
 }
 
