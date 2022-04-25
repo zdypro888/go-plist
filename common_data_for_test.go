@@ -1060,5 +1060,5 @@ func init() {
 	setupPlistValues()
 
 	// Pre-warm the type info struct to remove it from benchmarking
-	getTypeInfo(reflect.ValueOf(plistValueTreeRawData).Type())
+	GetTypeInfo(reflect.ValueOf(plistValueTreeRawData).Type())
 }
