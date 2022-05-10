@@ -26,7 +26,7 @@ func main() {
 	}
 	fmt.Printf("var %s = characterSet{\n", nam)
 	for _, v := range vals {
-		fmt.Printf("\t0x%16.016x,\n", v)
+		fmt.Printf("\t%#x16.016x,\n", v)
 	}
 	fmt.Printf("}\n")
 }

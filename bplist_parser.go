@@ -33,11 +33,11 @@ type bplistParser struct {
 
 func (p *bplistParser) validateDocumentTrailer() {
 	if p.trailer.OffsetTableOffset >= p.trailerOffset {
-		panic(fmt.Errorf("offset table beyond beginning of trailer (0x%x, trailer@0x%x)", p.trailer.OffsetTableOffset, p.trailerOffset))
+		panic(fmt.Errorf("offset table beyond beginning of trailer (%#x, trailer@%#x)", p.trailer.OffsetTableOffset, p.trailerOffset))
 	}
 
 	if p.trailer.OffsetTableOffset < 9 {
-		panic(fmt.Errorf("offset table begins inside header (0x%x)", p.trailer.OffsetTableOffset))
+		panic(fmt.Errorf("offset table begins inside header (%#x)", p.trailer.OffsetTableOffset))
 	}
 
 	if p.trailerOffset > (p.trailer.NumObjects*uint64(p.trailer.OffsetIntSize))+p.trailer.OffsetTableOffset {
@@ -164,7 +164,7 @@ func (p *bplistParser) objectAtIndex(index uint64) cfValue {
 
 	off, _ := p.parseOffsetAtOffset(offset(p.trailer.OffsetTableOffset + (index * uint64(p.trailer.OffsetIntSize))))
 	if off > offset(p.trailer.OffsetTableOffset-1) {
-		panic(fmt.Errorf("object#%d starts beyond beginning of object table (0x%x, table@0x%x)", index, off, p.trailer.OffsetTableOffset))
+		panic(fmt.Errorf("object#%d starts beyond beginning of object table (%#x, table@%#x)", index, off, p.trailer.OffsetTableOffset))
 	}
 
 	pval := p.parseTagAtOffset(off)
@@ -185,11 +185,11 @@ func (p *bplistParser) pushNestedObject(off offset) {
 func (p *bplistParser) panicNestedObject(off offset) {
 	ids := ""
 	for _, v := range p.containerStack {
-		ids += fmt.Sprintf("0x%x > ", v)
+		ids += fmt.Sprintf("%#x > ", v)
 	}
 
-	// %s0x%d: ids above ends with " > "
-	panic(fmt.Errorf("self-referential collection@0x%x (%s0x%x) cannot be deserialized", off, ids, off))
+	// %s%#xd: ids above ends with " > "
+	panic(fmt.Errorf("self-referential collection@%#x (%s%#x) cannot be deserialized", off, ids, off))
 }
 
 func (p *bplistParser) popNestedObject() {
@@ -250,7 +250,7 @@ func (p *bplistParser) parseTagAtOffset(off offset) cfValue {
 	case bpTagArray:
 		return p.parseArrayAtOffset(off)
 	}
-	panic(fmt.Errorf("unexpected atom 0x%2.02x at offset 0x%x", tag, off))
+	panic(fmt.Errorf("unexpected atom %#x2.02x at offset %#x", tag, off))
 }
 
 func (p *bplistParser) parseIntegerAtOffset(off offset) (uint64, uint64, offset) {
@@ -271,7 +271,7 @@ func (p *bplistParser) countForTagAtOffset(off offset) (uint64, offset) {
 func (p *bplistParser) parseDataAtOffset(off offset) []byte {
 	len, start := p.countForTagAtOffset(off)
 	if start+offset(len) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("data@0x%x too long (%v bytes, max is %v)", off, len, p.trailer.OffsetTableOffset-uint64(start)))
+		panic(fmt.Errorf("data@%#x too long (%v bytes, max is %v)", off, len, p.trailer.OffsetTableOffset-uint64(start)))
 	}
 	return p.buffer[start : start+offset(len)]
 }
@@ -279,7 +279,7 @@ func (p *bplistParser) parseDataAtOffset(off offset) []byte {
 func (p *bplistParser) parseASCIIStringAtOffset(off offset) string {
 	len, start := p.countForTagAtOffset(off)
 	if start+offset(len) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("ascii string@0x%x too long (%v bytes, max is %v)", off, len, p.trailer.OffsetTableOffset-uint64(start)))
+		panic(fmt.Errorf("ascii string@%#x too long (%v bytes, max is %v)", off, len, p.trailer.OffsetTableOffset-uint64(start)))
 	}
 
 	return zeroCopy8BitString(p.buffer, int(start), int(len))
@@ -289,7 +289,7 @@ func (p *bplistParser) parseUTF16StringAtOffset(off offset) string {
 	len, start := p.countForTagAtOffset(off)
 	bytes := len * 2
 	if start+offset(bytes) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("utf16 string@0x%x too long (%v bytes, max is %v)", off, bytes, p.trailer.OffsetTableOffset-uint64(start)))
+		panic(fmt.Errorf("utf16 string@%#x too long (%v bytes, max is %v)", off, bytes, p.trailer.OffsetTableOffset-uint64(start)))
 	}
 
 	u16s := make([]uint16, len)
@@ -302,7 +302,7 @@ func (p *bplistParser) parseUTF16StringAtOffset(off offset) string {
 
 func (p *bplistParser) parseObjectListAtOffset(off offset, count uint64) []cfValue {
 	if off+offset(count*uint64(p.trailer.ObjectRefSize)) > offset(p.trailer.OffsetTableOffset) {
-		panic(fmt.Errorf("list@0x%x length (%v) puts its end beyond the offset table at 0x%x", off, count, p.trailer.OffsetTableOffset))
+		panic(fmt.Errorf("list@%#x length (%v) puts its end beyond the offset table at %#x", off, count, p.trailer.OffsetTableOffset))
 	}
 	objects := make([]cfValue, count)
 
@@ -329,7 +329,7 @@ func (p *bplistParser) parseDictionaryAtOffset(off offset) *cfDictionary {
 		if str, ok := objects[i].(cfString); ok {
 			keys[i] = string(str)
 		} else {
-			panic(fmt.Errorf("dictionary@0x%x contains non-string key at index %d", off, i))
+			panic(fmt.Errorf("dictionary@%#x contains non-string key at index %d", off, i))
 		}
 	}
 
