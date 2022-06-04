@@ -5,7 +5,6 @@ go 1.18
 require (
 	github.com/google/go-cmp v0.5.8
 	github.com/satori/go.uuid v1.2.0
-	howett.net/plist v1.0.0
 )
 
 require (
