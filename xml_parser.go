@@ -16,6 +16,7 @@ type xmlPlistParser struct {
 	xmlDecoder         *xml.Decoder
 	whitespaceReplacer *strings.Replacer
 	ntags              int
+	idrefs             map[string]cfValue
 }
 
 func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
@@ -49,6 +50,18 @@ func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
 	}
 }
 
+func (p *xmlPlistParser) storeOrFindXMLElementValue(element xml.StartElement, value cfValue) cfValue {
+	for _, attr := range element.Attr {
+		switch attr.Name.Local {
+		case "ID":
+			p.idrefs[attr.Value] = value
+		case "IDREF":
+			return p.idrefs[attr.Value]
+		}
+	}
+	return value
+}
+
 func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 	var charData xml.CharData
 	switch element.Name.Local {
@@ -59,11 +72,9 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 			if err != nil {
 				panic(err)
 			}
-
 			if el, ok := token.(xml.EndElement); ok && el.Name.Local == "plist" {
 				break
 			}
-
 			if el, ok := token.(xml.StartElement); ok {
 				return p.parseXMLElement(el)
 			}
@@ -76,28 +87,26 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 			panic(err)
 		}
 
-		return cfString(charData)
+		return p.storeOrFindXMLElementValue(element, cfString(charData))
 	case "integer":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)
 		if err != nil {
 			panic(err)
 		}
-
-		s := string(charData)
-		if len(s) == 0 {
+		if len(charData) == 0 {
 			// panic(errors.New("invalid empty <integer/>"))
-			return &cfNumber{signed: false, value: uint64(0)}
+			return p.storeOrFindXMLElementValue(element, &cfNumber{signed: false, value: uint64(0)})
 		}
-
+		s := string(charData)
 		if s[0] == '-' {
 			s, base := unsignedGetBase(s[1:])
 			n := mustParseInt("-"+s, base, 64)
-			return &cfNumber{signed: true, value: uint64(n)}
+			return p.storeOrFindXMLElementValue(element, &cfNumber{signed: true, value: uint64(n)})
 		} else {
 			s, base := unsignedGetBase(s)
 			n := mustParseUint(s, base, 64)
-			return &cfNumber{signed: false, value: n}
+			return p.storeOrFindXMLElementValue(element, &cfNumber{signed: false, value: n})
 		}
 	case "real":
 		p.ntags++
@@ -105,45 +114,48 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 		if err != nil {
 			panic(err)
 		}
-
+		if len(charData) == 0 {
+			return p.storeOrFindXMLElementValue(element, &cfReal{wide: true, value: 0})
+		}
 		n := mustParseFloat(string(charData), 64)
-		return &cfReal{wide: true, value: n}
+		return p.storeOrFindXMLElementValue(element, &cfReal{wide: true, value: n})
 	case "true", "false":
 		p.ntags++
 		p.xmlDecoder.Skip()
 
 		b := element.Name.Local == "true"
-		return cfBoolean(b)
+		return p.storeOrFindXMLElementValue(element, cfBoolean(b))
 	case "date":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)
 		if err != nil {
 			panic(err)
 		}
-
+		if len(charData) == 0 {
+			return p.storeOrFindXMLElementValue(element, cfDate(time.Time{}))
+		}
 		t, err := time.ParseInLocation(time.RFC3339, string(charData), time.UTC)
 		if err != nil {
 			panic(err)
 		}
-
-		return cfDate(t)
+		return p.storeOrFindXMLElementValue(element, cfDate(t))
 	case "data":
 		p.ntags++
 		err := p.xmlDecoder.DecodeElement(&charData, &element)
 		if err != nil {
 			panic(err)
 		}
-
+		if len(charData) == 0 {
+			return p.storeOrFindXMLElementValue(element, cfData(nil))
+		}
 		str := p.whitespaceReplacer.Replace(string(charData))
-
 		l := base64.StdEncoding.DecodedLen(len(str))
 		bytes := make([]uint8, l)
 		l, err = base64.StdEncoding.Decode(bytes, []byte(str))
 		if err != nil {
 			panic(err)
 		}
-
-		return cfData(bytes[:l])
+		return p.storeOrFindXMLElementValue(element, cfData(bytes[:l]))
 	case "dict":
 		p.ntags++
 		var key *string
@@ -154,14 +166,12 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 			if err != nil {
 				panic(err)
 			}
-
 			if el, ok := token.(xml.EndElement); ok && el.Name.Local == "dict" {
 				if key != nil {
 					panic(errors.New("missing value in dictionary"))
 				}
 				break
 			}
-
 			if el, ok := token.(xml.StartElement); ok {
 				if el.Name.Local == "key" {
 					var k string
@@ -177,9 +187,8 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 				}
 			}
 		}
-
 		dict := &cfDictionary{keys: keys, values: values}
-		return dict.maybeUID(false)
+		return p.storeOrFindXMLElementValue(element, dict.maybeUID(false))
 	case "array":
 		p.ntags++
 		values := make([]cfValue, 0, 10)
@@ -188,16 +197,14 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 			if err != nil {
 				panic(err)
 			}
-
 			if el, ok := token.(xml.EndElement); ok && el.Name.Local == "array" {
 				break
 			}
-
 			if el, ok := token.(xml.StartElement); ok {
 				values = append(values, p.parseXMLElement(el))
 			}
 		}
-		return &cfArray{values}
+		return p.storeOrFindXMLElementValue(element, &cfArray{values})
 	}
 	err := fmt.Errorf("encountered unknown element %s", element.Name.Local)
 	if p.ntags == 0 {
@@ -208,5 +215,11 @@ func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
 }
 
 func newXMLPlistParser(r io.Reader) *xmlPlistParser {
-	return &xmlPlistParser{r, xml.NewDecoder(r), strings.NewReplacer("\t", "", "\n", "", " ", "", "\r", ""), 0}
+	return &xmlPlistParser{
+		reader:             r,
+		xmlDecoder:         xml.NewDecoder(r),
+		whitespaceReplacer: strings.NewReplacer("\t", "", "\n", "", " ", "", "\r", ""),
+		ntags:              0,
+		idrefs:             make(map[string]cfValue),
+	}
 }
