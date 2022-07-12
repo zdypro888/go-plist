@@ -128,7 +128,7 @@ func TestBplistLatin1ToUTF16(t *testing.T) {
 	encoder := NewBinaryEncoder(&buf)
 
 	data := map[string]string{
-		"_": string(sBuf.Bytes()),
+		"_": sBuf.String(),
 	}
 	if err := encoder.Encode(data); err != nil {
 		t.Error(err.Error())

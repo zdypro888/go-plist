@@ -64,8 +64,7 @@ func (p *Encoder) marshalTextInterface(marshalable encoding.TextMarshaler) cfVal
 
 // marshalStruct marshals a reflected struct value to a plist dictionary
 func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
-	tinfo, _ := GetTypeInfo(typ)
-
+	tinfo, _ := GetTypeInfo(val.Type())
 	dict := &cfDictionary{
 		keys:   make([]string, 0, len(tinfo.Fields)),
 		values: make([]cfValue, 0, len(tinfo.Fields)),
@@ -81,26 +80,27 @@ func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
 	return dict
 }
 
-func (p *Encoder) marshalTime(val reflect.Value) cfValue {
-	time := val.Interface().(time.Time)
-	return cfDate(time)
-}
-
 func (p *Encoder) marshal(val reflect.Value) cfValue {
 	if !val.IsValid() {
-		// We got this far and still may have an invalid anything or nil ptr/interface
-		if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && val.IsNil() {
-			return &cfDictionary{}
-		}
 		return nil
 	}
+	// interface, map, pointer, or slice
 	// Descend into pointers or interfaces
 	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
-		return p.marshal(val.Elem())
+		valelem := val.Elem()
+		if !valelem.IsValid() {
+			typelem := val.Type().Elem()
+			if typelem.Kind() == reflect.Struct {
+				return &cfDictionary{}
+			}
+		}
+		return p.marshal(valelem)
 	}
+	typ := val.Type()
 	// time.Time implements TextMarshaler, but we need to store it in RFC3339
-	if val.Type() == timeType {
-		return p.marshalTime(val)
+	if typ == timeType {
+		time := val.Interface().(time.Time)
+		return cfDate(time)
 	}
 	if receiver, can := implementsInterface(val, plistMarshalerType); can {
 		return p.marshalPlistInterface(receiver.(Marshaler))
@@ -109,8 +109,6 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 	if receiver, can := implementsInterface(val, textMarshalerType); can {
 		return p.marshalTextInterface(receiver.(encoding.TextMarshaler))
 	}
-
-	typ := val.Type()
 	if typ == uidType {
 		return cfUID(val.Uint())
 	}
@@ -155,7 +153,6 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 		if typ.Key().Kind() != reflect.String {
 			panic(&unknownTypeError{typ})
 		}
-
 		l := val.Len()
 		dict := &cfDictionary{
 			keys:   make([]string, 0, l),

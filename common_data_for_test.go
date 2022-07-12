@@ -156,7 +156,7 @@ var tests = []TestData{
 			OpenStepFormat: []byte(`Hello`),
 			GNUStepFormat:  []byte(`Hello`),
 			XMLFormat:      []byte(xmlPreamble + `<plist version="1.0"><string>Hello</string></plist>`),
-			BinaryFormat:   []byte{98, 112, 108, 105, 115, 116, 48, 48, 85, 72, 101, 108, 108, 111, 8, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14},
+			BinaryFormat:   {98, 112, 108, 105, 115, 116, 48, 48, 85, 72, 101, 108, 108, 111, 8, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14},
 		},
 	},
 	{
@@ -166,7 +166,7 @@ var tests = []TestData{
 			OpenStepFormat: []byte(`"'"`),
 			GNUStepFormat:  []byte(`"'"`),
 			XMLFormat:      []byte(xmlPreamble + `<plist version="1.0"><string>&#39;</string></plist>`),
-			BinaryFormat:   []byte{98, 112, 108, 105, 115, 116, 48, 48, 81, 39, 8, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10},
+			BinaryFormat:   {98, 112, 108, 105, 115, 116, 48, 48, 81, 39, 8, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10},
 		},
 	},
 	{
@@ -180,7 +180,7 @@ var tests = []TestData{
 			OpenStepFormat: []byte(`{Name=Dustin;}`),
 			GNUStepFormat:  []byte(`{Name=Dustin;}`),
 			XMLFormat:      []byte(xmlPreamble + `<plist version="1.0"><dict><key>Name</key><string>Dustin</string></dict></plist>`),
-			BinaryFormat:   []byte{98, 112, 108, 105, 115, 116, 48, 48, 209, 1, 2, 84, 78, 97, 109, 101, 86, 68, 117, 115, 116, 105, 110, 8, 11, 16, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23},
+			BinaryFormat:   {98, 112, 108, 105, 115, 116, 48, 48, 209, 1, 2, 84, 78, 97, 109, 101, 86, 68, 117, 115, 116, 105, 110, 8, 11, 16, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23},
 		},
 	},
 	{

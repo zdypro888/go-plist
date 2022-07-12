@@ -1,33 +1,10 @@
 package plist
 
 import (
-	"log"
 	"reflect"
 	"testing"
 	"time"
 )
-
-type tr struct {
-}
-
-func TestReflect(t *testing.T) {
-	ReflectIn([]any{tr{}})
-}
-func ReflectIn(a []any) {
-	val := reflect.ValueOf(a)
-	log.Println(val.Kind())
-	log.Println(val.IsValid())
-	log.Println(val.NumMethod())
-	vale := val.Index(0)
-	log.Println(vale.Kind())
-	log.Println(vale.IsValid())
-	log.Println(vale.NumMethod())
-
-	vale = vale.Elem()
-	log.Println(vale.Kind())
-	log.Println(vale.IsValid())
-	log.Println(vale.NumMethod())
-}
 
 func BenchmarkStructMarshal(b *testing.B) {
 	for i := 0; i < b.N; i++ {

@@ -232,7 +232,6 @@ func (p *Decoder) unmarshalArray(a *cfArray, val reflect.Value) {
 		p.unmarshal(sval, val.Index(n))
 		n++
 	}
-	return
 }
 
 func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) {
