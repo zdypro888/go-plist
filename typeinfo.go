@@ -81,7 +81,6 @@ func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*FieldInfo, erro
 	tokens := strings.Split(tag, ",")
 	tag = tokens[0]
 	if len(tokens) > 1 {
-		tag = tokens[0]
 		for _, flag := range tokens[1:] {
 			switch flag {
 			case "omitempty":

@@ -78,7 +78,6 @@ func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
 		dict.keys = append(dict.keys, finfo.Name)
 		dict.values = append(dict.values, p.marshal(value))
 	}
-
 	return dict
 }
 
@@ -89,48 +88,32 @@ func (p *Encoder) marshalTime(val reflect.Value) cfValue {
 
 func (p *Encoder) marshal(val reflect.Value) cfValue {
 	if !val.IsValid() {
+		// We got this far and still may have an invalid anything or nil ptr/interface
+		if (val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && val.IsNil() {
+			return &cfDictionary{}
+		}
 		return nil
 	}
-
-	if receiver, can := implementsInterface(val, plistMarshalerType); can {
-		return p.marshalPlistInterface(receiver.(Marshaler))
+	// Descend into pointers or interfaces
+	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
+		return p.marshal(val.Elem())
 	}
-
 	// time.Time implements TextMarshaler, but we need to store it in RFC3339
 	if val.Type() == timeType {
 		return p.marshalTime(val)
 	}
-	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
-		ival := val.Elem()
-		if ival.IsValid() && ival.Type() == timeType {
-			return p.marshalTime(ival)
-		}
+	if receiver, can := implementsInterface(val, plistMarshalerType); can {
+		return p.marshalPlistInterface(receiver.(Marshaler))
 	}
-
 	// Check for text marshaler.
 	if receiver, can := implementsInterface(val, textMarshalerType); can {
 		return p.marshalTextInterface(receiver.(encoding.TextMarshaler))
 	}
 
-	// Descend into pointers or interfaces
-	if val.Kind() == reflect.Interface && val.NumMethod() == 0 {
-		val = val.Elem()
-	}
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	// We got this far and still may have an invalid anything or nil ptr/interface
-	if !val.IsValid() || ((val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && val.IsNil()) {
-		return &cfDictionary{}
-	}
-
 	typ := val.Type()
-
 	if typ == uidType {
 		return cfUID(val.Uint())
 	}
-
 	if val.Kind() == reflect.Struct {
 		return p.marshalStruct(typ, val)
 	}

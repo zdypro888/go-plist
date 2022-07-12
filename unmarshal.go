@@ -94,22 +94,18 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 	if pval == nil {
 		return
 	}
-
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
 		}
 		val = val.Elem()
 	}
-
 	if isEmptyInterface(val) {
 		v := p.valueInterface(pval)
 		val.Set(reflect.ValueOf(v))
 		return
 	}
-
 	incompatibleTypeError := &incompatibleDecodeTypeError{val.Type(), pval.typeName()}
-
 	// time.Time implements TextMarshaler, but we need to parse it as RFC3339
 	if date, ok := pval.(cfDate); ok {
 		if val.Type() == timeType {
@@ -118,12 +114,10 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 		}
 		panic(incompatibleTypeError)
 	}
-
 	if receiver, can := implementsInterface(val, plistUnmarshalerType); can {
 		p.unmarshalPlistInterface(pval, receiver.(Unmarshaler))
 		return
 	}
-
 	if val.Type() != timeType {
 		if receiver, can := implementsInterface(val, textUnmarshalerType); can {
 			if str, ok := pval.(cfString); ok {
@@ -134,9 +128,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 			return
 		}
 	}
-
 	typ := val.Type()
-
 	switch pval := pval.(type) {
 	case cfString:
 		if val.Kind() == reflect.String {
@@ -147,7 +139,6 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 			p.unmarshalLaxString(string(pval), val)
 			return
 		}
-
 		panic(incompatibleTypeError)
 	case *cfNumber:
 		switch val.Kind() {
