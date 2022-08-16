@@ -3,14 +3,14 @@ package plist
 import (
 	"bytes"
 	"encoding/binary"
-	"io/ioutil"
+	"io"
 	"math"
 	"testing"
 )
 
 func BenchmarkBplistGenerate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		d := newBplistGenerator(ioutil.Discard)
+		d := newBplistGenerator(io.Discard)
 		d.generateDocument(plistValueTree)
 	}
 }

@@ -191,7 +191,7 @@ func (p *bplistGenerator) writeIntTag(signed bool, n uint64) {
 
 func (p *bplistGenerator) writeUIDTag(u UID) {
 	nbytes := bplistMinimumIntSize(uint64(u))
-	tag := uint8(bpTagUID | (nbytes - 1))
+	tag := bpTagUID | uint8((nbytes - 1))
 
 	binary.Write(p.writer, binary.BigEndian, tag)
 	p.writeSizedInt(uint64(u), nbytes)

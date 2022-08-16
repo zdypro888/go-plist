@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"runtime"
 	"time"
@@ -73,7 +72,7 @@ func (p *bplistParser) parseDocument() (pval cfValue, parseError error) {
 		}
 	}()
 
-	p.buffer, _ = ioutil.ReadAll(p.reader)
+	p.buffer, _ = io.ReadAll(p.reader)
 
 	l := len(p.buffer)
 	if l < 40 {

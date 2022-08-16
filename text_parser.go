@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"runtime"
 	"strings"
 	"time"
@@ -78,7 +77,7 @@ func (p *textPlistParser) parseDocument() (pval cfValue, parseError error) {
 		}
 	}()
 
-	buffer, err := ioutil.ReadAll(p.reader)
+	buffer, err := io.ReadAll(p.reader)
 	if err != nil {
 		panic(err)
 	}

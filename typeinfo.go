@@ -35,9 +35,8 @@ func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
 			if f.Tag.Get("plist") == "-" || (!f.Anonymous && f.PkgPath != "") {
 				continue // Private field
 			}
-
 			// For embedded structs, embed its fields.
-			if f.Anonymous {
+			if f.Anonymous || f.Tag.Get("plist") == ",inline" {
 				t := f.Type
 				if t.Kind() == reflect.Ptr {
 					t = t.Elem()

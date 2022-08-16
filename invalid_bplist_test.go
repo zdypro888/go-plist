@@ -25,12 +25,12 @@ import (
 
 var InvalidBplists = [][]byte{
 	// Too short
-	[]byte{
+	{
 		'b', 'p', 'l', 'i', 's', 't', '0', '0',
 		0x00,
 	},
 	// Bad magic
-	[]byte{
+	{
 		'x', 'p', 'l', 'i', 's', 't', '0', '0',
 
 		0x00,
@@ -45,7 +45,7 @@ var InvalidBplists = [][]byte{
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09,
 	},
 	// Bad version
-	[]byte{
+	{
 		'b', 'p', 'l', 'i', 's', 't', '3', '0',
 
 		0x00,
@@ -60,7 +60,7 @@ var InvalidBplists = [][]byte{
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09,
 	},
 	// Bad version II
-	[]byte{
+	{
 		'b', 'p', 'l', 'i', 's', 't', '@', 'A',
 
 		0x00,

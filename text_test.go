@@ -2,13 +2,13 @@ package plist
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"testing"
 )
 
 func BenchmarkOpenStepGenerate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		d := newTextPlistGenerator(ioutil.Discard, OpenStepFormat)
+		d := newTextPlistGenerator(io.Discard, OpenStepFormat)
 		d.generateDocument(plistValueTree)
 	}
 }

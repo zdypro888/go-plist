@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"reflect"
 	"strings"
 	"time"
@@ -62,7 +61,7 @@ var (
 	errArchiverNilElem = errors.New("nil item")
 )
 
-//ArchiverAddFoundation add archiver types class
+// ArchiverAddFoundation add archiver types class
 func ArchiverAddFoundation(typ reflect.Type, name string, classes ...string) {
 	archiverClasses[typ] = &archiverClass{ClassName: name, Classes: classes}
 }
@@ -92,7 +91,7 @@ type archiverTop struct {
 	Root UID `plist:"root"` //或着$0
 }
 
-//Archiver 序列化
+// Archiver 序列化
 type Archiver struct {
 	Version  int           `plist:"$version"`
 	Objects  []interface{} `plist:"$objects"`
@@ -100,25 +99,25 @@ type Archiver struct {
 	Top      *archiverTop  `plist:"$top"`
 }
 
-//ReadFromZipData 从压缩数据读取
+// ReadFromZipData 从压缩数据读取
 func (a *Archiver) ReadFromZipData(data []byte) error {
 	reader, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
-	mcaData, err := ioutil.ReadAll(reader)
+	mcaData, err := io.ReadAll(reader)
 	if err != nil {
 		return err
 	}
 	return a.ReadFromData(mcaData)
 }
 
-//ReadFromData 从数据读取
+// ReadFromData 从数据读取
 func (a *Archiver) ReadFromData(data []byte) error {
 	return a.ReadFromReader(bytes.NewReader(data))
 }
 
-//ReadFromReader 从数据读取
+// ReadFromReader 从数据读取
 func (a *Archiver) ReadFromReader(reader io.ReadSeeker) error {
 	decoder := NewDecoder(reader)
 	return decoder.Decode(a)
@@ -142,7 +141,7 @@ func (a *Archiver) addObject(obj interface{}) UID {
 	return UID(len(a.Objects) - 1)
 }
 
-//Unmarshal 序列化
+// Unmarshal 序列化
 func (a *Archiver) Unmarshal(v interface{}) error {
 	return a.unmarshal(a.Objects[a.Top.Root], reflect.ValueOf(v))
 }
@@ -360,7 +359,7 @@ func (a *Archiver) unmarshalStruct(dict map[string]interface{}, val reflect.Valu
 	return nil
 }
 
-//Marshal 序列化
+// Marshal 序列化
 func (a *Archiver) Marshal(v interface{}) ([]byte, error) {
 	a.Version = 100000
 	a.Archiver = "NSKeyedArchiver"
@@ -477,7 +476,7 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 	return a.addObject(table), nil
 }
 
-//Unmarshal 序列化
+// Unmarshal 序列化
 func (a *Archiver) Print() string {
 	return a.printObject(a.Objects[a.Top.Root])
 }
