@@ -52,7 +52,7 @@ var InvalidTextPlists = []struct {
 func TestInvalidTextPlists(t *testing.T) {
 	for _, test := range InvalidTextPlists {
 		subtest(t, test.Name, func(t *testing.T) {
-			var obj interface{}
+			var obj any
 			buf := strings.NewReader(test.Data)
 			err := NewDecoder(buf).Decode(&obj)
 			if err == nil {

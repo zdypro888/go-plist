@@ -14,8 +14,8 @@ func BenchmarkStructMarshal(b *testing.B) {
 }
 
 func BenchmarkMapMarshal(b *testing.B) {
-	data := map[string]interface{}{
-		"intarray": []interface{}{
+	data := map[string]any{
+		"intarray": []any{
 			int(1),
 			int8(8),
 			int16(16),
@@ -27,7 +27,7 @@ func BenchmarkMapMarshal(b *testing.B) {
 			uint32(33),
 			uint64(65),
 		},
-		"floats": []interface{}{
+		"floats": []any{
 			float32(32.0),
 			float64(64.0),
 		},
@@ -52,7 +52,7 @@ func BenchmarkMapMarshal(b *testing.B) {
 func TestInvalidMarshal(t *testing.T) {
 	tests := []struct {
 		Name  string
-		Thing interface{}
+		Thing any
 	}{
 		{"Function", func() {}},
 		{"Nil", nil},
