@@ -7,15 +7,15 @@ import (
 	"reflect"
 )
 
-//Dictionary Plist标准Map
-type Dictionary map[string]interface{}
+// Dictionary Plist标准Map
+type Dictionary map[string]any
 
-//Unmarshal 序列化
-func (m Dictionary) Unmarshal(v interface{}) error {
-	return m.unmarshal(map[string]interface{}(m), reflect.ValueOf(v))
+// Unmarshal 序列化
+func (m Dictionary) Unmarshal(v any) error {
+	return m.unmarshal(map[string]any(m), reflect.ValueOf(v))
 }
 
-func (m Dictionary) unmarshal(v interface{}, val reflect.Value) error {
+func (m Dictionary) unmarshal(v any, val reflect.Value) error {
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
@@ -128,12 +128,12 @@ func (m Dictionary) unmarshal(v interface{}, val reflect.Value) error {
 		default:
 			val.Set(reflect.ValueOf(pval))
 		}
-	case []interface{}:
+	case []any:
 		if val.Kind() == reflect.Slice {
 			return m.unmarshalSlice(pval, val)
 		}
 		return fmt.Errorf("not slice field: %v", val.Type())
-	case map[string]interface{}:
+	case map[string]any:
 		switch val.Kind() {
 		case reflect.Map:
 			val.Set(reflect.MakeMap(val.Type()))
@@ -150,7 +150,7 @@ func (m Dictionary) unmarshal(v interface{}, val reflect.Value) error {
 	}
 	return nil
 }
-func (m Dictionary) unmarshalSlice(array []interface{}, val reflect.Value) error {
+func (m Dictionary) unmarshalSlice(array []any, val reflect.Value) error {
 	new := reflect.MakeSlice(val.Type(), len(array), len(array))
 	val.Set(new)
 	for i, v := range array {
@@ -160,7 +160,7 @@ func (m Dictionary) unmarshalSlice(array []interface{}, val reflect.Value) error
 	}
 	return nil
 }
-func (m Dictionary) unmarshalStruct(dict map[string]interface{}, val reflect.Value) error {
+func (m Dictionary) unmarshalStruct(dict map[string]any, val reflect.Value) error {
 	typ := val.Type()
 	tinfo, err := GetTypeInfo(typ)
 	if err != nil {
@@ -178,7 +178,7 @@ func (m Dictionary) unmarshalStruct(dict map[string]interface{}, val reflect.Val
 	return nil
 }
 
-//ConvertToJSON 转到json格式
+// ConvertToJSON 转到json格式
 func ConvertToJSON(data []byte) ([]byte, error) {
 	objdict := make(Dictionary)
 	decoder := NewDecoder(bytes.NewReader(data))

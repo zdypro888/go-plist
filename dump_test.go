@@ -31,7 +31,7 @@ func sanitizeFilename(f string) string {
 	return filenameReplacer.Replace(f)
 }
 
-func oneshotGob(v interface{}, path string) {
+func oneshotGob(v any, path string) {
 	f, _ := os.Create(path)
 	defer f.Close()
 	enc := gob.NewEncoder(f)

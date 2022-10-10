@@ -34,13 +34,13 @@ type archiverUUID struct {
 	Class UID    `plist:"$class"`
 }
 type archiverArray struct {
-	Objects []interface{} `plist:"NS.objects"`
-	Class   UID           `plist:"$class"`
+	Objects []any `plist:"NS.objects"`
+	Class   UID   `plist:"$class"`
 }
 type archiverTable struct {
-	Keys    []UID         `plist:"NS.keys"`
-	Objects []interface{} `plist:"NS.objects"`
-	Class   UID           `plist:"$class"`
+	Keys    []UID `plist:"NS.keys"`
+	Objects []any `plist:"NS.objects"`
+	Class   UID   `plist:"$class"`
 }
 
 var (
@@ -93,10 +93,10 @@ type archiverTop struct {
 
 // Archiver 序列化
 type Archiver struct {
-	Version  int           `plist:"$version"`
-	Objects  []interface{} `plist:"$objects"`
-	Archiver string        `plist:"$archiver"`
-	Top      *archiverTop  `plist:"$top"`
+	Version  int          `plist:"$version"`
+	Objects  []any        `plist:"$objects"`
+	Archiver string       `plist:"$archiver"`
+	Top      *archiverTop `plist:"$top"`
 }
 
 // ReadFromZipData 从压缩数据读取
@@ -122,16 +122,16 @@ func (a *Archiver) ReadFromReader(reader io.ReadSeeker) error {
 	decoder := NewDecoder(reader)
 	return decoder.Decode(a)
 }
-func (a *Archiver) getClass(dict map[string]interface{}) (*archiverClass, error) {
+func (a *Archiver) getClass(dict map[string]any) (*archiverClass, error) {
 	class := &archiverClass{}
-	dval := Dictionary(a.Objects[dict["$class"].(UID)].(map[string]interface{}))
+	dval := Dictionary(a.Objects[dict["$class"].(UID)].(map[string]any))
 	if err := dval.Unmarshal(class); err != nil {
 		return nil, err
 	}
 	return class, nil
 }
 
-func (a *Archiver) addObject(obj interface{}) UID {
+func (a *Archiver) addObject(obj any) UID {
 	for i, o := range a.Objects {
 		if cmp.Equal(o, obj) {
 			return UID(i)
@@ -142,10 +142,10 @@ func (a *Archiver) addObject(obj interface{}) UID {
 }
 
 // Unmarshal 序列化
-func (a *Archiver) Unmarshal(v interface{}) error {
+func (a *Archiver) Unmarshal(v any) error {
 	return a.unmarshal(a.Objects[a.Top.Root], reflect.ValueOf(v))
 }
-func (a *Archiver) unmarshal(v interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshal(v any, val reflect.Value) error {
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
@@ -195,12 +195,12 @@ func (a *Archiver) unmarshal(v interface{}, val reflect.Value) error {
 		default:
 			return errors.New("not UID/int field")
 		}
-	case []interface{}:
+	case []any:
 		if val.Kind() == reflect.Slice {
 			return a.unmarshalSlice(pval, val)
 		}
 		return errors.New("not slice field")
-	case map[string]interface{}:
+	case map[string]any:
 		class, err := a.getClass(pval)
 		if err != nil {
 			return err
@@ -255,12 +255,12 @@ func (a *Archiver) unmarshal(v interface{}, val reflect.Value) error {
 	}
 	return nil
 }
-func (a *Archiver) unmarshalMap(pval map[string]interface{}, val reflect.Value) {
+func (a *Archiver) unmarshalMap(pval map[string]any, val reflect.Value) {
 	for k, v := range pval {
 		val.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 	}
 }
-func (a *Archiver) unmarshalDate(pval map[string]interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalDate(pval map[string]any, val reflect.Value) error {
 	date := &archiverDate{}
 	if err := Dictionary(pval).Unmarshal(date); err != nil {
 		return err
@@ -269,7 +269,7 @@ func (a *Archiver) unmarshalDate(pval map[string]interface{}, val reflect.Value)
 	val.Set(reflect.ValueOf(vt))
 	return nil
 }
-func (a *Archiver) unmarshalData(pval map[string]interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalData(pval map[string]any, val reflect.Value) error {
 	data := &archiverData{}
 	if err := Dictionary(pval).Unmarshal(data); err != nil {
 		return err
@@ -277,7 +277,7 @@ func (a *Archiver) unmarshalData(pval map[string]interface{}, val reflect.Value)
 	val.SetBytes(data.Data)
 	return nil
 }
-func (a *Archiver) unmarshalUUID(pval map[string]interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalUUID(pval map[string]any, val reflect.Value) error {
 	uid := &archiverUUID{}
 	if err := Dictionary(pval).Unmarshal(uid); err != nil {
 		return err
@@ -285,7 +285,7 @@ func (a *Archiver) unmarshalUUID(pval map[string]interface{}, val reflect.Value)
 	val.SetBytes(uid.Bytes)
 	return nil
 }
-func (a *Archiver) unmarshalSlice(array []interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalSlice(array []any, val reflect.Value) error {
 	new := reflect.MakeSlice(val.Type(), len(array), len(array))
 	val.Set(new)
 	for i, v := range array {
@@ -293,7 +293,7 @@ func (a *Archiver) unmarshalSlice(array []interface{}, val reflect.Value) error 
 	}
 	return nil
 }
-func (a *Archiver) unmarshalArray(dict map[string]interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalArray(dict map[string]any, val reflect.Value) error {
 	arr := &archiverArray{}
 	if err := Dictionary(dict).Unmarshal(arr); err != nil {
 		return err
@@ -311,7 +311,7 @@ func (a *Archiver) unmarshalArray(dict map[string]interface{}, val reflect.Value
 	}
 	return nil
 }
-func (a *Archiver) unmarshalNSType(pval map[string]interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalNSType(pval map[string]any, val reflect.Value) error {
 	tinfo, err := GetTypeInfo(val.Type())
 	if err != nil {
 		return err
@@ -327,7 +327,7 @@ func (a *Archiver) unmarshalNSType(pval map[string]interface{}, val reflect.Valu
 	}
 	return nil
 }
-func (a *Archiver) unmarshalStruct(dict map[string]interface{}, val reflect.Value) error {
+func (a *Archiver) unmarshalStruct(dict map[string]any, val reflect.Value) error {
 	typ := val.Type()
 	tinfo, err := GetTypeInfo(typ)
 	if err != nil {
@@ -337,7 +337,7 @@ func (a *Archiver) unmarshalStruct(dict map[string]interface{}, val reflect.Valu
 	if err := Dictionary(dict).Unmarshal(tab); err != nil {
 		return err
 	}
-	kvs := make(map[string]interface{})
+	kvs := make(map[string]any)
 	for i, keyI := range tab.Keys {
 		key := a.Objects[keyI].(string)
 		value := tab.Objects[i]
@@ -360,10 +360,10 @@ func (a *Archiver) unmarshalStruct(dict map[string]interface{}, val reflect.Valu
 }
 
 // Marshal 序列化
-func (a *Archiver) Marshal(v interface{}) ([]byte, error) {
+func (a *Archiver) Marshal(v any) ([]byte, error) {
 	a.Version = 100000
 	a.Archiver = "NSKeyedArchiver"
-	a.Objects = make([]interface{}, 0)
+	a.Objects = make([]any, 0)
 	a.addObject("$null")
 	index, err := a.marshal(reflect.ValueOf(v))
 	if err != nil {
@@ -449,7 +449,7 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 		return 0, err
 	}
 	if class, ok := archiverClasses[typ]; ok {
-		nsobj := make(map[string]interface{})
+		nsobj := make(map[string]any)
 		for _, ti := range tinfo.Fields {
 			valueIndex, err := a.marshal(ti.Value(val))
 			if err != nil {
@@ -481,7 +481,7 @@ func (a *Archiver) Print() string {
 	return a.printObject(a.Objects[a.Top.Root])
 }
 
-func (a *Archiver) printObject(v interface{}) string {
+func (a *Archiver) printObject(v any) string {
 	switch pval := v.(type) {
 	case string:
 		return fmt.Sprintf("string(%v)", pval)
@@ -500,9 +500,9 @@ func (a *Archiver) printObject(v interface{}) string {
 	case UID:
 		return a.printObject(a.Objects[pval])
 		// return fmt.Sprintf("UID(%v)", pval)
-	case []interface{}:
+	case []any:
 		return a.printSlice(pval)
-	case map[string]interface{}:
+	case map[string]any:
 		class, err := a.getClass(pval)
 		if err != nil {
 			panic(err)
@@ -527,7 +527,7 @@ func (a *Archiver) printObject(v interface{}) string {
 		return fmt.Sprintf("unknow : %v", pval)
 	}
 }
-func (a *Archiver) printDate(pval map[string]interface{}) string {
+func (a *Archiver) printDate(pval map[string]any) string {
 	date := &archiverDate{}
 	if err := Dictionary(pval).Unmarshal(date); err != nil {
 		panic(err)
@@ -535,21 +535,21 @@ func (a *Archiver) printDate(pval map[string]interface{}) string {
 	vt := time.Unix(int64(date.Time)+unixToCocoa, 0)
 	return fmt.Sprintf("time(%v)", vt)
 }
-func (a *Archiver) printData(pval map[string]interface{}) string {
+func (a *Archiver) printData(pval map[string]any) string {
 	data := &archiverData{}
 	if err := Dictionary(pval).Unmarshal(data); err != nil {
 		panic(err)
 	}
 	return fmt.Sprintf("[]byte(%x)", data.Data)
 }
-func (a *Archiver) printUUID(pval map[string]interface{}) string {
+func (a *Archiver) printUUID(pval map[string]any) string {
 	uid := &archiverUUID{}
 	if err := Dictionary(pval).Unmarshal(uid); err != nil {
 		panic(err)
 	}
 	return fmt.Sprintf("UID(%x)", uid.Bytes)
 }
-func (a *Archiver) printSlice(array []interface{}) string {
+func (a *Archiver) printSlice(array []any) string {
 	builder := &strings.Builder{}
 	builder.WriteString("[]interface{\n")
 	for i, v := range array {
@@ -558,7 +558,7 @@ func (a *Archiver) printSlice(array []interface{}) string {
 	builder.WriteString("}")
 	return builder.String()
 }
-func (a *Archiver) printArray(dict map[string]interface{}) string {
+func (a *Archiver) printArray(dict map[string]any) string {
 	arr := &archiverArray{}
 	if err := Dictionary(dict).Unmarshal(arr); err != nil {
 		panic(err)
@@ -571,7 +571,7 @@ func (a *Archiver) printArray(dict map[string]interface{}) string {
 	builder.WriteString("}")
 	return builder.String()
 }
-func (a *Archiver) printNSType(pval map[string]interface{}) string {
+func (a *Archiver) printNSType(pval map[string]any) string {
 	builder := &strings.Builder{}
 	builder.WriteString("NS{\n")
 	for k, v := range pval {
@@ -580,12 +580,12 @@ func (a *Archiver) printNSType(pval map[string]interface{}) string {
 	builder.WriteString("}")
 	return builder.String()
 }
-func (a *Archiver) printStruct(dict map[string]interface{}) string {
+func (a *Archiver) printStruct(dict map[string]any) string {
 	tab := &archiverTable{}
 	if err := Dictionary(dict).Unmarshal(tab); err != nil {
 		panic(err)
 	}
-	kvs := make(map[string]interface{})
+	kvs := make(map[string]any)
 	for i, keyI := range tab.Keys {
 		key := a.Objects[keyI].(string)
 		value := a.printObject(tab.Objects[i])

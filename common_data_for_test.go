@@ -9,8 +9,8 @@ import (
 
 type TestData struct {
 	Name        string
-	Value       interface{}
-	DecodeValue interface{} // used when the document cannot encode parts of Value
+	Value       any
+	DecodeValue any // used when the document cannot encode parts of Value
 	Documents   map[int][]byte
 	SkipDecode  map[int]bool
 	SkipEncode  map[int]bool
@@ -82,14 +82,14 @@ type ArrayThatSerializesAsOneObject struct {
 	values []uint64
 }
 
-func (f ArrayThatSerializesAsOneObject) MarshalPlist() (interface{}, error) {
+func (f ArrayThatSerializesAsOneObject) MarshalPlist() (any, error) {
 	if len(f.values) == 1 {
 		return f.values[0], nil
 	}
 	return f.values, nil
 }
 
-func (f *ArrayThatSerializesAsOneObject) UnmarshalPlist(unmarshal func(interface{}) error) error {
+func (f *ArrayThatSerializesAsOneObject) UnmarshalPlist(unmarshal func(any) error) error {
 	var ui uint64
 	if err := unmarshal(&ui); err == nil {
 		f.values = []uint64{ui}
@@ -103,14 +103,14 @@ type PlistMarshalingBoolByPointer struct {
 	b bool
 }
 
-func (b *PlistMarshalingBoolByPointer) MarshalPlist() (interface{}, error) {
+func (b *PlistMarshalingBoolByPointer) MarshalPlist() (any, error) {
 	if b.b {
 		return int64(-1), nil
 	}
 	return int64(-2), nil
 }
 
-func (b *PlistMarshalingBoolByPointer) UnmarshalPlist(unmarshal func(interface{}) error) error {
+func (b *PlistMarshalingBoolByPointer) UnmarshalPlist(unmarshal func(any) error) error {
 	var val int64
 	err := unmarshal(&val)
 	if err != nil {
@@ -123,7 +123,7 @@ func (b *PlistMarshalingBoolByPointer) UnmarshalPlist(unmarshal func(interface{}
 
 type BothMarshaler struct{}
 
-func (b *BothMarshaler) MarshalPlist() (interface{}, error) {
+func (b *BothMarshaler) MarshalPlist() (any, error) {
 	return map[string]string{"a": "b"}, nil
 }
 
@@ -135,7 +135,7 @@ type BothUnmarshaler struct {
 	Blah int64 `plist:"blah,omitempty"`
 }
 
-func (b *BothUnmarshaler) UnmarshalPlist(unmarshal func(interface{}) error) error {
+func (b *BothUnmarshaler) UnmarshalPlist(unmarshal func(any) error) error {
 	// no error
 	return nil
 }
@@ -363,7 +363,7 @@ var tests = []TestData{
 	},
 	{
 		Name:  "Floats of Increasing Bitness",
-		Value: []interface{}{float32(math.MaxFloat32), float64(math.MaxFloat64)},
+		Value: []any{float32(math.MaxFloat32), float64(math.MaxFloat64)},
 		Documents: map[int][]byte{
 			OpenStepFormat: []byte(`(3.4028234663852886e+38,1.7976931348623157e+308,)`),
 			GNUStepFormat:  []byte(`(<*R3.4028234663852886e+38>,<*R1.7976931348623157e+308>,)`),
@@ -395,7 +395,7 @@ var tests = []TestData{
 	},
 	{
 		Name: "Map (containing arbitrary types)",
-		Value: map[string]interface{}{
+		Value: map[string]any{
 			"float":  1.0,
 			"uint64": uint64(1),
 		},
@@ -410,8 +410,8 @@ var tests = []TestData{
 	},
 	{
 		Name: "Map (containing all variations of all types)",
-		Value: interface{}(map[string]interface{}{
-			"intarray": []interface{}{
+		Value: any(map[string]any{
+			"intarray": []any{
 				int(1),
 				int8(8),
 				int16(16),
@@ -423,7 +423,7 @@ var tests = []TestData{
 				uint32(33),
 				uint64(65),
 			},
-			"floats": []interface{}{
+			"floats": []any{
 				float32(32.0),
 				float64(64.0),
 			},
@@ -448,12 +448,12 @@ var tests = []TestData{
 	},
 	{
 		Name: "Map (containing nil)",
-		Value: map[string]interface{}{
+		Value: map[string]any{
 			"float":  1.5,
 			"uint64": uint64(1),
 			"nil":    nil,
 		},
-		DecodeValue: map[string]interface{}{
+		DecodeValue: map[string]any{
 			"float":  1.5,
 			"uint64": uint64(1),
 		},
@@ -581,7 +581,7 @@ var tests = []TestData{
 	},
 	{
 		Name: "Duplicated Values",
-		Value: []interface{}{
+		Value: []any{
 			"Hello",
 			float32(32.0),
 			float64(32.0),
@@ -641,7 +641,7 @@ var tests = []TestData{
 		},
 	},
 	{
-		Name: "CF Keyed Archiver UIDs (interface{})",
+		Name: "CF Keyed Archiver UIDs (any)",
 		Value: []UID{
 			0xff,
 			0xffff,
@@ -881,7 +881,7 @@ var tests = []TestData{
 	},
 	{
 		Name:  "Empty Text Document",
-		Value: map[string]interface{}{}, // Defined to be an empty dictionary
+		Value: map[string]any{}, // Defined to be an empty dictionary
 		Documents: map[int][]byte{
 			OpenStepFormat: []byte{},
 		},
@@ -889,7 +889,7 @@ var tests = []TestData{
 	},
 	{
 		Name:  "Text document consisting of only whitespace",
-		Value: map[string]interface{}{}, // Defined to be an empty dictionary
+		Value: map[string]any{}, // Defined to be an empty dictionary
 		Documents: map[int][]byte{
 			OpenStepFormat: []byte(" \n\t"),
 		},
@@ -897,7 +897,7 @@ var tests = []TestData{
 	},
 	{
 		Name: "Sized integers at size boundaries",
-		Value: []interface{}{
+		Value: []any{
 			int8(-128),
 			int8(127),
 			int16(-32768),
@@ -907,7 +907,7 @@ var tests = []TestData{
 			int64(-9223372036854775808),
 			int64(9223372036854775807),
 		},
-		DecodeValue: []interface{}{
+		DecodeValue: []any{
 			// interface decoding promotes all numbers to u/int64
 			int64(-128),
 			uint64(127),
@@ -924,7 +924,7 @@ var tests = []TestData{
 	},
 	{
 		Name: "Duplicate Dictionary Keys",
-		Value: map[string]interface{}{
+		Value: map[string]any{
 			"key": "second value",
 		},
 		Documents: map[int][]byte{
@@ -966,7 +966,7 @@ var tests = []TestData{
 	},
 	{
 		Name:  "Text document with quoted GNUstep values",
-		Value: []interface{}{uint64(1048576), uint64(1234), true},
+		Value: []any{uint64(1048576), uint64(1234), true},
 		Documents: map[int][]byte{
 			GNUStepFormat: []byte(`(<*I"1048576">, <*I"1234>, <*B"Y>)`),
 		},

@@ -22,7 +22,7 @@ type Encoder struct {
 }
 
 // Encode writes the property list encoding of v to the stream.
-func (p *Encoder) Encode(v interface{}) (err error) {
+func (p *Encoder) Encode(v any) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(runtime.Error); ok {
@@ -96,11 +96,11 @@ func NewBinaryEncoder(w io.Writer) *Encoder {
 // Struct values are encoded as dictionaries, with only exported fields being serialized. Struct field encoding may be influenced with the use of tags.
 // The tag format is:
 //
-//     `plist:"<key>[,flags...]"`
+//	`plist:"<key>[,flags...]"`
 //
 // The following flags are supported:
 //
-//     omitempty    Only include the field if it is not set to the zero value for its type.
+//	omitempty    Only include the field if it is not set to the zero value for its type.
 //
 // If the key is "-", the field is ignored.
 //
@@ -109,13 +109,13 @@ func NewBinaryEncoder(w io.Writer) *Encoder {
 // Pointer values encode as the value pointed to.
 //
 // Channel, complex and function values cannot be encoded. Any attempt to do so causes Marshal to return an error.
-func Marshal(v interface{}, format int) ([]byte, error) {
+func Marshal(v any, format int) ([]byte, error) {
 	return MarshalIndent(v, format, "")
 }
 
 // MarshalIndent works like Marshal, but each property list element
 // begins on a new line and is preceded by one or more copies of indent according to its nesting depth.
-func MarshalIndent(v interface{}, format int, indent string) ([]byte, error) {
+func MarshalIndent(v any, format int, indent string) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	enc := NewEncoderForFormat(buf, format)
 	enc.Indent(indent)

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-//IsEmptyValue is empty value for omitempty
+// IsEmptyValue is empty value for omitempty
 func IsEmptyValue(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
@@ -31,7 +31,7 @@ var (
 	timeType           = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
-func implementsInterface(val reflect.Value, interfaceType reflect.Type) (interface{}, bool) {
+func implementsInterface(val reflect.Value, interfaceType reflect.Type) (any, bool) {
 	if val.CanInterface() && val.Type().Implements(interfaceType) {
 		return val.Interface(), true
 	}

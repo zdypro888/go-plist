@@ -28,7 +28,7 @@ func isEmptyInterface(v reflect.Value) bool {
 }
 
 func (p *Decoder) unmarshalPlistInterface(pval cfValue, unmarshalable Unmarshaler) {
-	err := unmarshalable.UnmarshalPlist(func(i interface{}) (err error) {
+	err := unmarshalable.UnmarshalPlist(func(i any) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				if _, ok := r.(runtime.Error); ok {
@@ -272,7 +272,7 @@ func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) {
 }
 
 /* *Interface is modelled after encoding/json */
-func (p *Decoder) valueInterface(pval cfValue) interface{} {
+func (p *Decoder) valueInterface(pval cfValue) any {
 	switch pval := pval.(type) {
 	case cfString:
 		return string(pval)
@@ -303,16 +303,16 @@ func (p *Decoder) valueInterface(pval cfValue) interface{} {
 	return nil
 }
 
-func (p *Decoder) arrayInterface(a *cfArray) []interface{} {
-	out := make([]interface{}, len(a.values))
+func (p *Decoder) arrayInterface(a *cfArray) []any {
+	out := make([]any, len(a.values))
 	for i, subv := range a.values {
 		out[i] = p.valueInterface(subv)
 	}
 	return out
 }
 
-func (p *Decoder) dictionaryInterface(dict *cfDictionary) map[string]interface{} {
-	out := make(map[string]interface{})
+func (p *Decoder) dictionaryInterface(dict *cfDictionary) map[string]any {
+	out := make(map[string]any)
 	for i, k := range dict.keys {
 		subv := dict.values[i]
 		out[k] = p.valueInterface(subv)

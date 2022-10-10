@@ -109,7 +109,7 @@ func (p *textPlistParser) parseDocument() (pval cfValue, parseError error) {
 
 const eof rune = -1
 
-func (p *textPlistParser) error(e string, args ...interface{}) {
+func (p *textPlistParser) error(e string, args ...any) {
 	line := strings.Count(p.input[:p.pos], "\n")
 	char := p.pos - strings.LastIndex(p.input[:p.pos], "\n") - 1
 	panic(fmt.Errorf("%s at line %d character %d", fmt.Sprintf(e, args...), line, char))

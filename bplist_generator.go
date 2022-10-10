@@ -32,7 +32,7 @@ func bplistValueShouldUnique(pval cfValue) bool {
 
 type bplistGenerator struct {
 	writer   *countedWriter
-	objmap   map[interface{}]uint64 // maps pValue.hash()es to object locations
+	objmap   map[any]uint64 // maps pValue.hash()es to object locations
 	objtable []cfValue
 	trailer  bplistTrailer
 }
@@ -71,7 +71,7 @@ func (p *bplistGenerator) indexForPlistValue(pval cfValue) (uint64, bool) {
 
 func (p *bplistGenerator) generateDocument(root cfValue) {
 	p.objtable = make([]cfValue, 0, 16)
-	p.objmap = make(map[interface{}]uint64)
+	p.objmap = make(map[any]uint64)
 	p.flattenPlistValue(root)
 
 	p.trailer.NumObjects = uint64(len(p.objtable))
@@ -130,7 +130,7 @@ func (p *bplistGenerator) writePlistValue(pval cfValue) {
 }
 
 func (p *bplistGenerator) writeSizedInt(n uint64, nbytes int) {
-	var val interface{}
+	var val any
 	switch nbytes {
 	case 1:
 		val = uint8(n)
@@ -156,7 +156,7 @@ func (p *bplistGenerator) writeBoolTag(v bool) {
 
 func (p *bplistGenerator) writeIntTag(signed bool, n uint64) {
 	var tag uint8
-	var val interface{}
+	var val any
 	switch {
 	case n <= uint64(0xff):
 		val = uint8(n)
@@ -199,7 +199,7 @@ func (p *bplistGenerator) writeUIDTag(u UID) {
 
 func (p *bplistGenerator) writeRealTag(n float64, bits int) {
 	var tag uint8 = bpTagReal | 0x3
-	var val interface{} = n
+	var val any = n
 	if bits == 32 {
 		val = float32(n)
 		tag = bpTagReal | 0x2
