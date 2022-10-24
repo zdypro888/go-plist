@@ -70,7 +70,7 @@ func (p *xmlPlistGenerator) generateDocument(root cfValue) {
 func (p *xmlPlistGenerator) element(key string, value string) {
 	p.writeIndent()
 	if len(value) == 0 {
-		p.WriteString(fmt.Sprintf("<%s />\n", key))
+		p.WriteString(fmt.Sprintf("<%s/>\n", key))
 	} else {
 		p.WriteString(fmt.Sprintf("<%s>", key))
 		err := xml.EscapeText(p.Writer, []byte(value))
@@ -85,7 +85,7 @@ func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) {
 	dict.sort()
 	if len(dict.keys) == 0 {
 		p.writeIndent()
-		p.WriteString(fmt.Sprintf("<%s />\n", xmlDictTag))
+		p.WriteString(fmt.Sprintf("<%s/>\n", xmlDictTag))
 	} else {
 		p.writeIndent()
 		p.WriteString(fmt.Sprintf("<%s>\n", xmlDictTag))
@@ -105,7 +105,7 @@ func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) {
 func (p *xmlPlistGenerator) writeArray(a *cfArray) {
 	if len(a.values) == 0 {
 		p.writeIndent()
-		p.WriteString(fmt.Sprintf("<%s />\n", xmlArrayTag))
+		p.WriteString(fmt.Sprintf("<%s/>\n", xmlArrayTag))
 	} else {
 		p.writeIndent()
 		p.WriteString(fmt.Sprintf("<%s>\n", xmlArrayTag))
