@@ -14,8 +14,8 @@ func BenchmarkStructMarshal(b *testing.B) {
 }
 
 func BenchmarkMapMarshal(b *testing.B) {
-	data := map[string]any{
-		"intarray": []any{
+	data := map[string]interface{}{
+		"intarray": []interface{}{
 			int(1),
 			int8(8),
 			int16(16),
@@ -27,7 +27,7 @@ func BenchmarkMapMarshal(b *testing.B) {
 			uint32(33),
 			uint64(65),
 		},
-		"floats": []any{
+		"floats": []interface{}{
 			float32(32.0),
 			float64(64.0),
 		},
@@ -52,7 +52,7 @@ func BenchmarkMapMarshal(b *testing.B) {
 func TestInvalidMarshal(t *testing.T) {
 	tests := []struct {
 		Name  string
-		Thing any
+		Thing interface{}
 	}{
 		{"Function", func() {}},
 		{"Nil", nil},
@@ -69,5 +69,37 @@ func TestInvalidMarshal(t *testing.T) {
 				t.Log(err)
 			}
 		})
+	}
+}
+
+type Cat struct{}
+
+func (c *Cat) MarshalPlist() (interface{}, error) {
+	return "cat", nil
+}
+
+func TestInterfaceMarshal(t *testing.T) {
+	var c Cat
+	b, err := Marshal(&c, XMLFormat)
+	if err != nil {
+		t.Log(err)
+	} else if len(b) == 0 {
+		t.Log("expect non-zero data")
+	}
+}
+
+func TestInterfaceFieldMarshal(t *testing.T) {
+	type X struct {
+		C interface{} // C's type does not implement Marshaler
+	}
+	x := &X{
+		C: &Cat{}, // C's value implements Marshaler
+	}
+
+	b, err := Marshal(x, XMLFormat)
+	if err != nil {
+		t.Log(err)
+	} else if len(b) == 0 {
+		t.Log("expect non-zero data")
 	}
 }
