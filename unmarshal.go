@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -131,8 +132,30 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 	typ := val.Type()
 	switch pval := pval.(type) {
 	case cfString:
-		if val.Kind() == reflect.String {
+		switch val.Kind() {
+		case reflect.String:
 			val.SetString(string(pval))
+			return
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			i, pe := strconv.ParseInt(string(pval), 10, 64)
+			if pe != nil {
+				panic(pe)
+			}
+			val.SetInt(i)
+			return
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			i, pe := strconv.ParseUint(string(pval), 10, 64)
+			if pe != nil {
+				panic(pe)
+			}
+			val.SetUint(i)
+			return
+		case reflect.Float32, reflect.Float64:
+			f, pe := strconv.ParseFloat(string(pval), 64)
+			if pe != nil {
+				panic(pe)
+			}
+			val.SetFloat(f)
 			return
 		}
 		if p.lax {
@@ -146,14 +169,24 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 			val.SetInt(int64(pval.value))
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			val.SetUint(pval.value)
+		case reflect.Float32, reflect.Float64:
+			val.SetFloat(float64(pval.value))
+		case reflect.String:
+			val.SetString(strconv.FormatUint(pval.value, 10))
 		default:
 			panic(incompatibleTypeError)
 		}
 	case *cfReal:
-		if val.Kind() == reflect.Float32 || val.Kind() == reflect.Float64 {
-			// TODO: Consider warning on a downcast (storing a 64-bit value in a 32-bit reflect)
+		switch val.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			val.SetInt(int64(pval.value))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			val.SetUint(uint64(pval.value))
+		case reflect.Float32, reflect.Float64:
 			val.SetFloat(pval.value)
-		} else {
+		case reflect.String:
+			val.SetString(strconv.FormatFloat(pval.value, 'g', -1, 64))
+		default:
 			panic(incompatibleTypeError)
 		}
 	case cfBoolean:
