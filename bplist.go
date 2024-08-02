@@ -12,15 +12,15 @@ type bplistTrailer struct {
 
 const (
 	bpTagNull        uint8 = 0x00
-	bpTagBoolFalse   uint8 = 0x08
-	bpTagBoolTrue    uint8 = 0x09
-	bpTagInteger     uint8 = 0x10
-	bpTagReal        uint8 = 0x20
-	bpTagDate        uint8 = 0x30
-	bpTagData        uint8 = 0x40
-	bpTagASCIIString uint8 = 0x50
-	bpTagUTF16String uint8 = 0x60
-	bpTagUID         uint8 = 0x80
-	bpTagArray       uint8 = 0xA0
-	bpTagDictionary  uint8 = 0xD0
+	bpTagBoolFalse         = 0x08
+	bpTagBoolTrue          = 0x09
+	bpTagInteger           = 0x10
+	bpTagReal              = 0x20
+	bpTagDate              = 0x30
+	bpTagData              = 0x40
+	bpTagASCIIString       = 0x50
+	bpTagUTF16String       = 0x60
+	bpTagUID               = 0x80
+	bpTagArray             = 0xA0
+	bpTagDictionary        = 0xD0
 )

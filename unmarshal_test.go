@@ -25,7 +25,7 @@ func BenchmarkStructUnmarshal(b *testing.B) {
 
 func BenchmarkInterfaceUnmarshal(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		var xval any
+		var xval interface{}
 		d := &Decoder{}
 		d.unmarshal(plistValueTree, reflect.ValueOf(&xval))
 	}

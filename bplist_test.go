@@ -3,14 +3,14 @@ package plist
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
+	"io/ioutil"
 	"math"
 	"testing"
 )
 
 func BenchmarkBplistGenerate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		d := newBplistGenerator(io.Discard)
+		d := newBplistGenerator(ioutil.Discard)
 		d.generateDocument(plistValueTree)
 	}
 }
@@ -128,7 +128,7 @@ func TestBplistLatin1ToUTF16(t *testing.T) {
 	encoder := NewBinaryEncoder(&buf)
 
 	data := map[string]string{
-		"_": sBuf.String(),
+		"_": string(sBuf.Bytes()),
 	}
 	if err := encoder.Encode(data); err != nil {
 		t.Error(err.Error())
@@ -137,5 +137,42 @@ func TestBplistLatin1ToUTF16(t *testing.T) {
 	if !bytes.Equal(buf.Bytes(), expectedBuf.Bytes()) {
 		t.Error("Expected", expectedBuf.Bytes(), "received", buf.Bytes())
 		return
+	}
+}
+
+func TestBplistNonPowerOfTwoOffsetIntSizes(t *testing.T) {
+	bplist := []byte{
+		'b', 'p', 'l', 'i', 's', 't', '0', '0',
+
+		// Array (2 entries)
+		0xA2,
+		0x01, 0x02,
+
+		// 0xFFFFFFFFFFFFFF80 (MinInt8, sign extended)
+		0x13, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x80,
+
+		// 0x7F (MaxInt8)
+		0x10, 0x7f,
+
+		// Offset table (each entry is 3 bytes)
+		0x00, 0x00, 0x08,
+		0x00, 0x00, 0x0b,
+		0x00, 0x00, 0x14,
+
+		// Trailer
+		0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00,
+		0x03,
+		0x01,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16,
+	}
+
+	buf := bytes.NewReader(bplist)
+	d := newBplistParser(buf)
+	_, err := d.parseDocument()
+	if err != nil {
+		t.Error("Unexpected error", err)
 	}
 }

@@ -3,8 +3,8 @@ package plist
 import (
 	"hash/crc32"
 	"sort"
-	"strconv"
 	"time"
+	"strconv"
 )
 
 // magic value used in the non-binary encoding of UIDs
@@ -13,7 +13,7 @@ const cfUIDMagic = "CF$UID"
 
 type cfValue interface {
 	typeName() string
-	hash() any
+	hash() interface{}
 }
 
 type cfDictionary struct {
@@ -25,7 +25,7 @@ func (*cfDictionary) typeName() string {
 	return "dictionary"
 }
 
-func (p *cfDictionary) hash() any {
+func (p *cfDictionary) hash() interface{} {
 	return p
 }
 
@@ -72,7 +72,7 @@ func (*cfArray) typeName() string {
 	return "array"
 }
 
-func (p *cfArray) hash() any {
+func (p *cfArray) hash() interface{} {
 	return p
 }
 
@@ -82,7 +82,7 @@ func (cfString) typeName() string {
 	return "string"
 }
 
-func (p cfString) hash() any {
+func (p cfString) hash() interface{} {
 	return string(p)
 }
 
@@ -95,7 +95,7 @@ func (*cfNumber) typeName() string {
 	return "integer"
 }
 
-func (p *cfNumber) hash() any {
+func (p *cfNumber) hash() interface{} {
 	if p.signed {
 		return int64(p.value)
 	}
@@ -111,7 +111,7 @@ func (cfReal) typeName() string {
 	return "real"
 }
 
-func (p *cfReal) hash() any {
+func (p *cfReal) hash() interface{} {
 	if p.wide {
 		return p.value
 	}
@@ -124,7 +124,7 @@ func (cfBoolean) typeName() string {
 	return "boolean"
 }
 
-func (p cfBoolean) hash() any {
+func (p cfBoolean) hash() interface{} {
 	return bool(p)
 }
 
@@ -134,7 +134,7 @@ func (cfUID) typeName() string {
 	return "UID"
 }
 
-func (p cfUID) hash() any {
+func (p cfUID) hash() interface{} {
 	return p
 }
 
@@ -154,7 +154,7 @@ func (cfData) typeName() string {
 	return "data"
 }
 
-func (p cfData) hash() any {
+func (p cfData) hash() interface{} {
 	// Data are uniqued by their checksums.
 	// Todo: Look at calculating this only once and storing it somewhere;
 	// crc32 is fairly quick, however.
@@ -167,6 +167,6 @@ func (cfDate) typeName() string {
 	return "date"
 }
 
-func (p cfDate) hash() any {
+func (p cfDate) hash() interface{} {
 	return time.Time(p)
 }

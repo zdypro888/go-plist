@@ -4,16 +4,16 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/zdypro888/go-plist"
+	"howett.net/plist"
 )
 
 type Base64String string
 
-func (e Base64String) MarshalPlist() (any, error) {
+func (e Base64String) MarshalPlist() (interface{}, error) {
 	return base64.StdEncoding.EncodeToString([]byte(e)), nil
 }
 
-func (e *Base64String) UnmarshalPlist(unmarshal func(any) error) error {
+func (e *Base64String) UnmarshalPlist(unmarshal func(interface{}) error) error {
 	var b64 string
 	if err := unmarshal(&b64); err != nil {
 		return err

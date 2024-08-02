@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// IsEmptyValue is empty value for omitempty
-func IsEmptyValue(v reflect.Value) bool {
+func isEmptyValue(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
 		return v.Len() == 0
@@ -31,7 +30,7 @@ var (
 	timeType           = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
-func implementsInterface(val reflect.Value, interfaceType reflect.Type) (any, bool) {
+func implementsInterface(val reflect.Value, interfaceType reflect.Type) (interface{}, bool) {
 	if val.CanInterface() {
 		itf := val.Interface()
 		if itf != nil && reflect.TypeOf(itf).Implements(interfaceType) {
@@ -69,54 +68,70 @@ func (p *Encoder) marshalTextInterface(marshalable encoding.TextMarshaler) cfVal
 
 // marshalStruct marshals a reflected struct value to a plist dictionary
 func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
-	tinfo, _ := GetTypeInfo(val.Type())
+	tinfo, _ := getTypeInfo(typ)
+
 	dict := &cfDictionary{
-		keys:   make([]string, 0, len(tinfo.Fields)),
-		values: make([]cfValue, 0, len(tinfo.Fields)),
+		keys:   make([]string, 0, len(tinfo.fields)),
+		values: make([]cfValue, 0, len(tinfo.fields)),
 	}
-	for _, finfo := range tinfo.Fields {
-		value := finfo.Value(val)
-		if !value.IsValid() || (finfo.OmitEmpty && IsEmptyValue(value)) {
+	for _, finfo := range tinfo.fields {
+		value := finfo.value(val)
+		if !value.IsValid() || finfo.omitEmpty && isEmptyValue(value) {
 			continue
 		}
-		dict.keys = append(dict.keys, finfo.Name)
+		dict.keys = append(dict.keys, finfo.name)
 		dict.values = append(dict.values, p.marshal(value))
 	}
+
 	return dict
+}
+
+func (p *Encoder) marshalTime(val reflect.Value) cfValue {
+	time := val.Interface().(time.Time)
+	return cfDate(time)
 }
 
 func (p *Encoder) marshal(val reflect.Value) cfValue {
 	if !val.IsValid() {
 		return nil
 	}
-	// interface, map, pointer, or slice
-	// Descend into pointers or interfaces
-	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
-		valelem := val.Elem()
-		if !valelem.IsValid() {
-			typelem := val.Type().Elem()
-			if typelem.Kind() == reflect.Struct {
-				return &cfDictionary{}
-			}
-		}
-		return p.marshal(valelem)
-	}
-	typ := val.Type()
-	// time.Time implements TextMarshaler, but we need to store it in RFC3339
-	if typ == timeType {
-		time := val.Interface().(time.Time)
-		return cfDate(time)
-	}
+
 	if receiver, can := implementsInterface(val, plistMarshalerType); can {
 		return p.marshalPlistInterface(receiver.(Marshaler))
 	}
+
+	// time.Time implements TextMarshaler, but we need to store it in RFC3339
+	if val.Type() == timeType {
+		return p.marshalTime(val)
+	}
+	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
+		ival := val.Elem()
+		if ival.IsValid() && ival.Type() == timeType {
+			return p.marshalTime(ival)
+		}
+	}
+
 	// Check for text marshaler.
 	if receiver, can := implementsInterface(val, textMarshalerType); can {
 		return p.marshalTextInterface(receiver.(encoding.TextMarshaler))
 	}
+
+	// Descend into pointers or interfaces
+	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
+		val = val.Elem()
+	}
+
+	// We got this far and still may have an invalid anything or nil ptr/interface
+	if !val.IsValid() || ((val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && val.IsNil()) {
+		return nil
+	}
+
+	typ := val.Type()
+
 	if typ == uidType {
 		return cfUID(val.Uint())
 	}
+
 	if val.Kind() == reflect.Struct {
 		return p.marshalStruct(typ, val)
 	}
@@ -158,6 +173,7 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 		if typ.Key().Kind() != reflect.String {
 			panic(&unknownTypeError{typ})
 		}
+
 		l := val.Len()
 		dict := &cfDictionary{
 			keys:   make([]string, 0, l),

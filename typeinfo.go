@@ -6,47 +6,51 @@ import (
 	"sync"
 )
 
-// TypeInfo holds details for the plist representation of a type.
-type TypeInfo struct {
-	Fields []FieldInfo
+// typeInfo holds details for the plist representation of a type.
+type typeInfo struct {
+	fields []fieldInfo
 }
 
-// FieldInfo holds details for the plist representation of a single field.
-type FieldInfo struct {
+// fieldInfo holds details for the plist representation of a single field.
+type fieldInfo struct {
 	idx       []int
-	Name      string
-	OmitEmpty bool
+	name      string
+	omitEmpty bool
 }
 
-var tinfoMap = &sync.Map{} //make(map[reflect.Type]*typeInfo)
+var tinfoMap = make(map[reflect.Type]*typeInfo)
+var tinfoLock sync.RWMutex
 
-// GetTypeInfo returns the typeInfo structure with details necessary
+// getTypeInfo returns the typeInfo structure with details necessary
 // for marshalling and unmarshalling typ.
-func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
-	ltinfo, ok := tinfoMap.Load(typ)
+func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
+	tinfoLock.RLock()
+	tinfo, ok := tinfoMap[typ]
+	tinfoLock.RUnlock()
 	if ok {
-		return ltinfo.(*TypeInfo), nil
+		return tinfo, nil
 	}
-	tinfo := &TypeInfo{}
+	tinfo = &typeInfo{}
 	if typ.Kind() == reflect.Struct {
 		n := typ.NumField()
 		for i := 0; i < n; i++ {
 			f := typ.Field(i)
-			if f.Tag.Get("plist") == "-" || (!f.Anonymous && f.PkgPath != "") {
+			if f.PkgPath != "" || f.Tag.Get("plist") == "-" {
 				continue // Private field
 			}
+
 			// For embedded structs, embed its fields.
-			if f.Anonymous || f.Tag.Get("plist") == ",inline" {
+			if f.Anonymous {
 				t := f.Type
 				if t.Kind() == reflect.Ptr {
 					t = t.Elem()
 				}
 				if t.Kind() == reflect.Struct {
-					inner, err := GetTypeInfo(t)
+					inner, err := getTypeInfo(t)
 					if err != nil {
 						return nil, err
 					}
-					for _, finfo := range inner.Fields {
+					for _, finfo := range inner.fields {
 						finfo.idx = append([]int{i}, finfo.idx...)
 						if err := addFieldInfo(typ, tinfo, &finfo); err != nil {
 							return nil, err
@@ -67,33 +71,40 @@ func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
 			}
 		}
 	}
-	tinfoMap.Store(typ, tinfo)
+	tinfoLock.Lock()
+	tinfoMap[typ] = tinfo
+	tinfoLock.Unlock()
 	return tinfo, nil
 }
 
 // structFieldInfo builds and returns a fieldInfo for f.
-func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*FieldInfo, error) {
-	finfo := &FieldInfo{idx: f.Index}
+func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*fieldInfo, error) {
+	finfo := &fieldInfo{idx: f.Index}
+
 	// Split the tag from the xml namespace if necessary.
 	tag := f.Tag.Get("plist")
+
 	// Parse flags.
 	tokens := strings.Split(tag, ",")
 	tag = tokens[0]
 	if len(tokens) > 1 {
+		tag = tokens[0]
 		for _, flag := range tokens[1:] {
 			switch flag {
 			case "omitempty":
-				finfo.OmitEmpty = true
+				finfo.omitEmpty = true
 			}
 		}
 	}
+
 	if tag == "" {
 		// If the name part of the tag is completely empty,
 		// use the field name
-		finfo.Name = f.Name
+		finfo.name = f.Name
 		return finfo, nil
 	}
-	finfo.Name = tag
+
+	finfo.name = tag
 	return finfo, nil
 }
 
@@ -104,26 +115,26 @@ func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*FieldInfo, erro
 // A conflict occurs when the path (parent + name) to a field is
 // itself a prefix of another path, or when two paths match exactly.
 // It is okay for field paths to share a common, shorter prefix.
-func addFieldInfo(typ reflect.Type, tinfo *TypeInfo, newf *FieldInfo) error {
+func addFieldInfo(typ reflect.Type, tinfo *typeInfo, newf *fieldInfo) error {
 	var conflicts []int
 	// First, figure all conflicts. Most working code will have none.
-	for i := range tinfo.Fields {
-		oldf := &tinfo.Fields[i]
-		if newf.Name == oldf.Name {
+	for i := range tinfo.fields {
+		oldf := &tinfo.fields[i]
+		if newf.name == oldf.name {
 			conflicts = append(conflicts, i)
 		}
 	}
 
 	// Without conflicts, add the new field and return.
 	if conflicts == nil {
-		tinfo.Fields = append(tinfo.Fields, *newf)
+		tinfo.fields = append(tinfo.fields, *newf)
 		return nil
 	}
 
 	// If any conflict is shallower, ignore the new field.
 	// This matches the Go field resolution on embedding.
 	for _, i := range conflicts {
-		if len(tinfo.Fields[i].idx) < len(newf.idx) {
+		if len(tinfo.fields[i].idx) < len(newf.idx) {
 			return nil
 		}
 	}
@@ -132,17 +143,17 @@ func addFieldInfo(typ reflect.Type, tinfo *TypeInfo, newf *FieldInfo) error {
 	// so drop the conflicting fields from tinfo and append the new one.
 	for c := len(conflicts) - 1; c >= 0; c-- {
 		i := conflicts[c]
-		copy(tinfo.Fields[i:], tinfo.Fields[i+1:])
-		tinfo.Fields = tinfo.Fields[:len(tinfo.Fields)-1]
+		copy(tinfo.fields[i:], tinfo.fields[i+1:])
+		tinfo.fields = tinfo.fields[:len(tinfo.fields)-1]
 	}
-	tinfo.Fields = append(tinfo.Fields, *newf)
+	tinfo.fields = append(tinfo.fields, *newf)
 	return nil
 }
 
-// Value returns v's field value corresponding to finfo.
+// value returns v's field value corresponding to finfo.
 // It's equivalent to v.FieldByIndex(finfo.idx), but initializes
 // and dereferences pointers as necessary.
-func (finfo *FieldInfo) Value(v reflect.Value) reflect.Value {
+func (finfo *fieldInfo) value(v reflect.Value) reflect.Value {
 	for i, x := range finfo.idx {
 		if i > 0 {
 			t := v.Type()

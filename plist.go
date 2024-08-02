@@ -70,7 +70,7 @@ type UID uint64
 //
 // If an error is returned by MarshalPlist, marshaling stops and the error is returned.
 type Marshaler interface {
-	MarshalPlist() (any, error)
+	MarshalPlist() (interface{}, error)
 }
 
 // Unmarshaler is the interface implemented by types that can unmarshal themselves from
@@ -79,5 +79,5 @@ type Marshaler interface {
 //
 // It is safe to call the unmarshal function more than once.
 type Unmarshaler interface {
-	UnmarshalPlist(unmarshal func(any) error) error
+	UnmarshalPlist(unmarshal func(interface{}) error) error
 }
