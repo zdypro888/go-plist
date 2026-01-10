@@ -23,6 +23,12 @@ func (m Dictionary) unmarshal(v any, val reflect.Value) error {
 		val = val.Elem()
 	}
 
+	// 空接口直接赋值
+	if val.Kind() == reflect.Interface && val.NumMethod() == 0 {
+		val.Set(reflect.ValueOf(v))
+		return nil
+	}
+
 	// 检查是否实现 Unmarshaler 接口
 	if receiver, ok := m.implementsUnmarshaler(val); ok {
 		return receiver.UnmarshalPlist(func(target any) error {
