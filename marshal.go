@@ -6,29 +6,17 @@ import (
 	"time"
 )
 
-// IsEmptyValue is empty value for omitempty
+// IsEmptyValue 检查值是否为空（用于 omitempty 标签）
+// Go 1.20+ 使用 reflect.Value.IsZero() 优化
 func IsEmptyValue(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
-		return v.Len() == 0
-	case reflect.Bool:
-		return !v.Bool()
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int() == 0
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return v.Uint() == 0
-	case reflect.Float32, reflect.Float64:
-		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
-		return v.IsNil()
-	}
-	return false
+	return v.IsZero()
 }
 
 var (
-	plistMarshalerType = reflect.TypeOf((*Marshaler)(nil)).Elem()
-	textMarshalerType  = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
-	timeType           = reflect.TypeOf((*time.Time)(nil)).Elem()
+	// Go 1.22+ 使用 reflect.TypeFor 简化类型获取
+	plistMarshalerType = reflect.TypeFor[Marshaler]()
+	textMarshalerType  = reflect.TypeFor[encoding.TextMarshaler]()
+	timeType           = reflect.TypeFor[time.Time]()
 )
 
 func implementsInterface(val reflect.Value, interfaceType reflect.Type) (any, bool) {
@@ -67,8 +55,8 @@ func (p *Encoder) marshalTextInterface(marshalable encoding.TextMarshaler) cfVal
 	return cfString(s)
 }
 
-// marshalStruct marshals a reflected struct value to a plist dictionary
-func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
+// marshalStruct 将结构体序列化为 plist dictionary
+func (p *Encoder) marshalStruct(val reflect.Value) cfValue {
 	tinfo, _ := GetTypeInfo(val.Type())
 	dict := &cfDictionary{
 		keys:   make([]string, 0, len(tinfo.Fields)),
@@ -91,7 +79,7 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 	}
 	// interface, map, pointer, or slice
 	// Descend into pointers or interfaces
-	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
+	if val.Kind() == reflect.Pointer || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
 		valelem := val.Elem()
 		if !valelem.IsValid() {
 			typelem := val.Type().Elem()
@@ -118,7 +106,7 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 		return cfUID(val.Uint())
 	}
 	if val.Kind() == reflect.Struct {
-		return p.marshalStruct(typ, val)
+		return p.marshalStruct(val)
 	}
 
 	switch val.Kind() {
@@ -163,9 +151,11 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 			keys:   make([]string, 0, l),
 			values: make([]cfValue, 0, l),
 		}
-		for _, keyv := range val.MapKeys() {
-			if subpval := p.marshal(val.MapIndex(keyv)); subpval != nil {
-				dict.keys = append(dict.keys, keyv.String())
+		// 使用 MapRange 替代 MapKeys + MapIndex，减少内存分配
+		iter := val.MapRange()
+		for iter.Next() {
+			if subpval := p.marshal(iter.Value()); subpval != nil {
+				dict.keys = append(dict.keys, iter.Key().String())
 				dict.values = append(dict.values, subpval)
 			}
 		}

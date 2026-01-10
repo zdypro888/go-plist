@@ -19,9 +19,10 @@ func (u *incompatibleDecodeTypeError) Error() string {
 }
 
 var (
-	plistUnmarshalerType = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
-	textUnmarshalerType  = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
-	uidType              = reflect.TypeOf(UID(0))
+	// Go 1.22+ 使用 reflect.TypeFor 简化类型获取
+	plistUnmarshalerType = reflect.TypeFor[Unmarshaler]()
+	textUnmarshalerType  = reflect.TypeFor[encoding.TextUnmarshaler]()
+	uidType              = reflect.TypeFor[UID]()
 )
 
 func isEmptyInterface(v reflect.Value) bool {
@@ -95,7 +96,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 	if pval == nil {
 		return
 	}
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
 		}
@@ -237,30 +238,28 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) {
 
 func (p *Decoder) unmarshalArray(a *cfArray, val reflect.Value) {
 	var n int
-	if val.Kind() == reflect.Slice {
-		// Slice of element values.
-		// Grow slice.
+	switch val.Kind() {
+	case reflect.Slice:
+		// 切片元素值，增长切片
 		cnt := len(a.values) + val.Len()
 		if cnt >= val.Cap() {
-			ncap := 2 * cnt
-			if ncap < 4 {
-				ncap = 4
-			}
-			new := reflect.MakeSlice(val.Type(), val.Len(), ncap)
-			reflect.Copy(new, val)
-			val.Set(new)
+			// Go 1.21+ 使用 max 函数
+			ncap := max(2*cnt, 4)
+			newSlice := reflect.MakeSlice(val.Type(), val.Len(), ncap)
+			reflect.Copy(newSlice, val)
+			val.Set(newSlice)
 		}
 		n = val.Len()
 		val.SetLen(cnt)
-	} else if val.Kind() == reflect.Array {
+	case reflect.Array:
 		if len(a.values) > val.Cap() {
 			panic(fmt.Errorf("plist: attempted to unmarshal %d values into an array of size %d", len(a.values), val.Cap()))
 		}
-	} else {
+	default:
 		panic(&incompatibleDecodeTypeError{val.Type(), a.typeName()})
 	}
 
-	// Recur to read element into slice.
+	// 递归读取元素到切片
 	for _, sval := range a.values {
 		p.unmarshal(sval, val.Index(n))
 		n++

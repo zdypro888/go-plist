@@ -146,7 +146,7 @@ func (a *Archiver) Unmarshal(v any) error {
 	return a.unmarshal(a.Objects[a.Top.Root], reflect.ValueOf(v))
 }
 func (a *Archiver) unmarshal(v any, val reflect.Value) error {
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
 		}
@@ -229,7 +229,7 @@ func (a *Archiver) unmarshal(v any, val reflect.Value) error {
 				return a.unmarshalArray(pval, val)
 			}
 			return fmt.Errorf("not data type: %s", class.ClassName)
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if val.IsNil() {
 				val.Set(reflect.New(val.Type().Elem()))
 			}
@@ -378,7 +378,7 @@ func (a *Archiver) Marshal(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 func (a *Archiver) marshal(val reflect.Value) (UID, error) {
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return UID(0), errArchiverNilElem
 		}

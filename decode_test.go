@@ -119,7 +119,7 @@ func TestDecode(t *testing.T) {
 			if !expReflect.IsValid() || isEmptyInterface(expReflect) {
 				return
 			}
-			if expReflect.Kind() == reflect.Ptr || expReflect.Kind() == reflect.Interface {
+			if expReflect.Kind() == reflect.Pointer || expReflect.Kind() == reflect.Interface {
 				// Unbox pointer for comparison's sake
 				expReflect = expReflect.Elem()
 			}
@@ -138,7 +138,7 @@ func TestDecode(t *testing.T) {
 					}
 
 					valReflect := reflect.ValueOf(val)
-					if valReflect.Kind() == reflect.Ptr || valReflect.Kind() == reflect.Interface {
+					if valReflect.Kind() == reflect.Pointer || valReflect.Kind() == reflect.Interface {
 						// Unbox pointer for comparison's sake
 						valReflect = valReflect.Elem()
 						val = valReflect.Interface()
