@@ -245,7 +245,7 @@ func (p *textPlistGenerator) writePlistValue(pval cfValue) error {
 			// Fill the buffer (only up to 8 characters, to preserve the space we implicitly include
 			// at the end of every encode)
 			hex.Encode(hexencoded[:8], b[i:l])
-			if _, err := io.WriteString(p.writer, string(hexencoded[:asc])); err != nil {
+			if _, err := p.writer.Write(hexencoded[:asc]); err != nil {
 				return err
 			}
 		}

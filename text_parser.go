@@ -350,12 +350,13 @@ outer:
 
 		var val cfValue
 		n := p.next()
-		if n == ';' {
+		switch n {
+		case ';':
 			// This is supposed to be .strings-specific.
 			// GNUstep parses this as an empty string.
 			// Apple copies the key like we do.
 			val = keypv
-		} else if n == '=' {
+		case '=':
 			// whitespace is consumed within
 			val = p.parsePlistValue()
 
@@ -364,7 +365,7 @@ outer:
 			if p.next() != ';' {
 				p.error("missing ; in dictionary")
 			}
-		} else {
+		default:
 			p.error("missing = in dictionary")
 		}
 

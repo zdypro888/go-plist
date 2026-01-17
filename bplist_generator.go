@@ -166,7 +166,7 @@ func (p *bplistGenerator) writeIntTag(signed bool, n uint64) error {
 	switch {
 	case n <= uint64(0xff):
 		val = uint8(n)
-		tag = bpTagInteger | 0x0
+		tag = bpTagInteger // | 0x0
 	case n <= uint64(0xffff):
 		val = uint16(n)
 		tag = bpTagInteger | 0x1
