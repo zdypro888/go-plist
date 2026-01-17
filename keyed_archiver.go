@@ -50,10 +50,11 @@ var (
 	archiverArrayClass             = &archiverClass{ClassName: "NSArray", Classes: []string{"NSArray", "NSObject"}}
 	archiverMutableDataClass       = &archiverClass{ClassName: "NSMutableData", Classes: []string{"NSMutableData", "NSData", "NSObject"}}
 
-	archiverDateType  = reflect.TypeOf((*time.Time)(nil)).Elem()
+	// Go 1.22+ 使用 reflect.TypeFor 简化类型获取
+	archiverDateType  = reflect.TypeFor[time.Time]()
 	archiverDateClass = &archiverClass{ClassName: "NSDate", Classes: []string{"NSDate", "NSObject"}}
 
-	archiverUUIDType  = reflect.TypeOf((*uuid.UUID)(nil)).Elem()
+	archiverUUIDType  = reflect.TypeFor[uuid.UUID]()
 	archiverUUIDClass = &archiverClass{ClassName: "NSUUID", Classes: []string{"NSUUID", "NSObject"}}
 
 	archiverClasses = make(map[reflect.Type]*archiverClass)
@@ -286,10 +287,12 @@ func (a *Archiver) unmarshalUUID(pval map[string]any, val reflect.Value) error {
 	return nil
 }
 func (a *Archiver) unmarshalSlice(array []any, val reflect.Value) error {
-	new := reflect.MakeSlice(val.Type(), len(array), len(array))
-	val.Set(new)
+	newSlice := reflect.MakeSlice(val.Type(), len(array), len(array))
+	val.Set(newSlice)
 	for i, v := range array {
-		a.unmarshal(v, val.Index(i))
+		if err := a.unmarshal(v, val.Index(i)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -476,36 +479,35 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 	return a.addObject(table), nil
 }
 
-// Unmarshal 序列化
-func (a *Archiver) Print() string {
+// Print 打印归档对象的调试信息
+func (a *Archiver) Print() (string, error) {
 	return a.printObject(a.Objects[a.Top.Root])
 }
 
-func (a *Archiver) printObject(v any) string {
+func (a *Archiver) printObject(v any) (string, error) {
 	switch pval := v.(type) {
 	case string:
-		return fmt.Sprintf("string(%v)", pval)
+		return fmt.Sprintf("string(%v)", pval), nil
 	case int64:
-		return fmt.Sprintf("int64(%v)", pval)
+		return fmt.Sprintf("int64(%v)", pval), nil
 	case uint64:
-		return fmt.Sprintf("uint64(%v)", pval)
+		return fmt.Sprintf("uint64(%v)", pval), nil
 	case float32:
-		return fmt.Sprintf("float32(%v)", pval)
+		return fmt.Sprintf("float32(%v)", pval), nil
 	case float64:
-		return fmt.Sprintf("float64(%v)", pval)
+		return fmt.Sprintf("float64(%v)", pval), nil
 	case bool:
-		return fmt.Sprintf("bool(%v)", pval)
+		return fmt.Sprintf("bool(%v)", pval), nil
 	case []byte:
-		return fmt.Sprintf("[]byte(%x)", pval)
+		return fmt.Sprintf("[]byte(%x)", pval), nil
 	case UID:
 		return a.printObject(a.Objects[pval])
-		// return fmt.Sprintf("UID(%v)", pval)
 	case []any:
 		return a.printSlice(pval)
 	case map[string]any:
 		class, err := a.getClass(pval)
 		if err != nil {
-			panic(err)
+			return "", err
 		}
 		if class.isDate() {
 			return a.printDate(pval)
@@ -524,71 +526,92 @@ func (a *Archiver) printObject(v any) string {
 		}
 		return a.printNSType(pval)
 	default:
-		return fmt.Sprintf("unknow : %v", pval)
+		return fmt.Sprintf("unknow : %v", pval), nil
 	}
 }
-func (a *Archiver) printDate(pval map[string]any) string {
+func (a *Archiver) printDate(pval map[string]any) (string, error) {
 	date := &archiverDate{}
 	if err := Dictionary(pval).Unmarshal(date); err != nil {
-		panic(err)
+		return "", err
 	}
 	vt := time.Unix(int64(date.Time)+unixToCocoa, 0)
-	return fmt.Sprintf("time(%v)", vt)
+	return fmt.Sprintf("time(%v)", vt), nil
 }
-func (a *Archiver) printData(pval map[string]any) string {
+
+func (a *Archiver) printData(pval map[string]any) (string, error) {
 	data := &archiverData{}
 	if err := Dictionary(pval).Unmarshal(data); err != nil {
-		panic(err)
+		return "", err
 	}
-	return fmt.Sprintf("[]byte(%x)", data.Data)
+	return fmt.Sprintf("[]byte(%x)", data.Data), nil
 }
-func (a *Archiver) printUUID(pval map[string]any) string {
+
+func (a *Archiver) printUUID(pval map[string]any) (string, error) {
 	uid := &archiverUUID{}
 	if err := Dictionary(pval).Unmarshal(uid); err != nil {
-		panic(err)
+		return "", err
 	}
-	return fmt.Sprintf("UID(%x)", uid.Bytes)
+	return fmt.Sprintf("UID(%x)", uid.Bytes), nil
 }
-func (a *Archiver) printSlice(array []any) string {
+
+func (a *Archiver) printSlice(array []any) (string, error) {
 	builder := &strings.Builder{}
 	builder.WriteString("[]interface{\n")
 	for i, v := range array {
-		builder.WriteString(fmt.Sprintf("\t[%d]: %s\n", i, a.printObject(v)))
+		s, err := a.printObject(v)
+		if err != nil {
+			return "", err
+		}
+		builder.WriteString(fmt.Sprintf("\t[%d]: %s\n", i, s))
 	}
 	builder.WriteString("}")
-	return builder.String()
+	return builder.String(), nil
 }
-func (a *Archiver) printArray(dict map[string]any) string {
+
+func (a *Archiver) printArray(dict map[string]any) (string, error) {
 	arr := &archiverArray{}
 	if err := Dictionary(dict).Unmarshal(arr); err != nil {
-		panic(err)
+		return "", err
 	}
 	builder := &strings.Builder{}
 	builder.WriteString("[]array{\n")
 	for i, v := range arr.Objects {
-		builder.WriteString(fmt.Sprintf("\t[%d]: %s\n", i, a.printObject(v)))
+		s, err := a.printObject(v)
+		if err != nil {
+			return "", err
+		}
+		builder.WriteString(fmt.Sprintf("\t[%d]: %s\n", i, s))
 	}
 	builder.WriteString("}")
-	return builder.String()
+	return builder.String(), nil
 }
-func (a *Archiver) printNSType(pval map[string]any) string {
+
+func (a *Archiver) printNSType(pval map[string]any) (string, error) {
 	builder := &strings.Builder{}
 	builder.WriteString("NS{\n")
 	for k, v := range pval {
-		builder.WriteString(fmt.Sprintf("\t[%s]: %s\n", k, a.printObject(v)))
+		s, err := a.printObject(v)
+		if err != nil {
+			return "", err
+		}
+		builder.WriteString(fmt.Sprintf("\t[%s]: %s\n", k, s))
 	}
 	builder.WriteString("}")
-	return builder.String()
+	return builder.String(), nil
 }
-func (a *Archiver) printStruct(dict map[string]any) string {
+
+func (a *Archiver) printStruct(dict map[string]any) (string, error) {
 	tab := &archiverTable{}
 	if err := Dictionary(dict).Unmarshal(tab); err != nil {
-		panic(err)
+		return "", err
 	}
-	kvs := make(map[string]any)
+	kvs := make(map[string]string)
 	for i, keyI := range tab.Keys {
 		key := a.Objects[keyI].(string)
-		value := a.printObject(tab.Objects[i])
+		value, err := a.printObject(tab.Objects[i])
+		if err != nil {
+			return "", err
+		}
 		kvs[key] = value
 	}
 	builder := &strings.Builder{}
@@ -597,5 +620,5 @@ func (a *Archiver) printStruct(dict map[string]any) string {
 		builder.WriteString(fmt.Sprintf("\t[%s]: %s\n", k, v))
 	}
 	builder.WriteString("}")
-	return builder.String()
+	return builder.String(), nil
 }

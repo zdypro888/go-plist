@@ -5,11 +5,10 @@ import (
 	"errors"
 	"io"
 	"reflect"
-	"runtime"
 )
 
 type generator interface {
-	generateDocument(cfValue)
+	generateDocument(cfValue) error
 	Indent(string)
 }
 
@@ -22,19 +21,13 @@ type Encoder struct {
 }
 
 // Encode writes the property list encoding of v to the stream.
-func (p *Encoder) Encode(v any) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			if _, ok := r.(runtime.Error); ok {
-				panic(r)
-			}
-			err = r.(error)
-		}
-	}()
-
-	pval := p.marshal(reflect.ValueOf(v))
+func (p *Encoder) Encode(v any) error {
+	pval, err := p.marshal(reflect.ValueOf(v))
+	if err != nil {
+		return err
+	}
 	if pval == nil {
-		panic(errors.New("plist: no root element to encode"))
+		return errors.New("plist: no root element to encode")
 	}
 
 	var g generator
@@ -47,8 +40,7 @@ func (p *Encoder) Encode(v any) (err error) {
 		g = newTextPlistGenerator(p.writer, p.format)
 	}
 	g.Indent(p.indent)
-	g.generateDocument(pval)
-	return
+	return g.generateDocument(pval)
 }
 
 // Indent turns on pretty-printing for the XML and Text property list formats.

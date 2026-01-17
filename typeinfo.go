@@ -2,6 +2,7 @@ package plist
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -46,7 +47,11 @@ func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
 						return nil, err
 					}
 					for _, finfo := range inner.Fields {
-						finfo.idx = append([]int{i}, finfo.idx...)
+						// 创建新的索引切片，避免修改原始数据
+						newIdx := make([]int, len(finfo.idx)+1)
+						newIdx[0] = i
+						copy(newIdx[1:], finfo.idx)
+						finfo.idx = newIdx
 						if err := addFieldInfo(tinfo, &finfo); err != nil {
 							return nil, err
 						}
@@ -112,10 +117,9 @@ func addFieldInfo(tinfo *TypeInfo, newf *FieldInfo) error {
 		}
 	}
 
-	// 新字段更浅层，移除冲突字段
+	// 新字段更浅层，移除冲突字段（Go 1.21+ slices.Delete）
 	for c := len(conflicts) - 1; c >= 0; c-- {
-		i := conflicts[c]
-		tinfo.Fields = append(tinfo.Fields[:i], tinfo.Fields[i+1:]...)
+		tinfo.Fields = slices.Delete(tinfo.Fields, conflicts[c], conflicts[c]+1)
 	}
 	tinfo.Fields = append(tinfo.Fields, *newf)
 	return nil

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"reflect"
-	"runtime"
 )
 
 type parser interface {
@@ -30,24 +29,19 @@ func (p *Decoder) Decode(v any) error {
 // DecodeForReflect works like Unmarshal, except it reads the decoder stream to find property list elements.
 //
 // After Decoding, the Decoder's Format field will be set to one of the plist format constants.
-func (p *Decoder) DecodeForReflect(refv reflect.Value) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			if _, ok := r.(runtime.Error); ok {
-				panic(r)
-			}
-			err = r.(error)
-		}
-	}()
-
+func (p *Decoder) DecodeForReflect(refv reflect.Value) error {
 	header := make([]byte, 6)
-	p.reader.Read(header)
-	p.reader.Seek(0, 0)
+	// 读取头部用于格式检测，忽略错误（可能是短文件）
+	_, _ = p.reader.Read(header)
+	if _, err := p.reader.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
 
-	var parser parser
 	var pval cfValue
+	var err error
+
 	if bytes.Equal(header, []byte("bplist")) {
-		parser = newBplistParser(p.reader)
+		parser := newBplistParser(p.reader)
 		pval, err = parser.parseDocument()
 		if err != nil {
 			// Had a bplist header, but still got an error: we have to die here.
@@ -55,11 +49,13 @@ func (p *Decoder) DecodeForReflect(refv reflect.Value) (err error) {
 		}
 		p.Format = BinaryFormat
 	} else {
-		parser = newXMLPlistParser(p.reader)
+		parser := newXMLPlistParser(p.reader)
 		pval, err = parser.parseDocument()
 		if _, ok := err.(invalidPlistError); ok {
 			// Rewind: the XML parser might have exhausted the file.
-			p.reader.Seek(0, 0)
+			if _, seekErr := p.reader.Seek(0, io.SeekStart); seekErr != nil {
+				return seekErr
+			}
 			// We don't use parser here because we want the textPlistParser type
 			tp := newTextPlistParser(p.reader)
 			pval, err = tp.parseDocument()
@@ -80,8 +76,7 @@ func (p *Decoder) DecodeForReflect(refv reflect.Value) (err error) {
 		}
 	}
 
-	p.unmarshal(pval, refv)
-	return
+	return p.unmarshal(pval, refv)
 }
 
 // NewDecoder returns a Decoder that reads property list elements from a stream reader, r.

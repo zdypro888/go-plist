@@ -72,7 +72,11 @@ func (p *bplistParser) parseDocument() (pval cfValue, parseError error) {
 		}
 	}()
 
-	p.buffer, _ = io.ReadAll(p.reader)
+	var err error
+	p.buffer, err = io.ReadAll(p.reader)
+	if err != nil {
+		panic(err)
+	}
 
 	l := len(p.buffer)
 	if l < 40 {

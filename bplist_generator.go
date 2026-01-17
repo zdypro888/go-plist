@@ -69,7 +69,7 @@ func (p *bplistGenerator) indexForPlistValue(pval cfValue) (uint64, bool) {
 	return v, ok
 }
 
-func (p *bplistGenerator) generateDocument(root cfValue) {
+func (p *bplistGenerator) generateDocument(root cfValue) error {
 	p.objtable = make([]cfValue, 0, 16)
 	p.objmap = make(map[any]uint64)
 	p.flattenPlistValue(root)
@@ -77,12 +77,16 @@ func (p *bplistGenerator) generateDocument(root cfValue) {
 	p.trailer.NumObjects = uint64(len(p.objtable))
 	p.trailer.ObjectRefSize = uint8(bplistMinimumIntSize(p.trailer.NumObjects))
 
-	p.writer.Write([]byte("bplist00"))
+	if _, err := p.writer.Write([]byte("bplist00")); err != nil {
+		return err
+	}
 
 	offtable := make([]uint64, p.trailer.NumObjects)
 	for i, pval := range p.objtable {
 		offtable[i] = uint64(p.writer.BytesWritten())
-		p.writePlistValue(pval)
+		if err := p.writePlistValue(pval); err != nil {
+			return err
+		}
 	}
 
 	p.trailer.OffsetIntSize = uint8(bplistMinimumIntSize(uint64(p.writer.BytesWritten())))
@@ -90,46 +94,48 @@ func (p *bplistGenerator) generateDocument(root cfValue) {
 	p.trailer.OffsetTableOffset = uint64(p.writer.BytesWritten())
 
 	for _, offset := range offtable {
-		p.writeSizedInt(offset, int(p.trailer.OffsetIntSize))
+		if err := p.writeSizedInt(offset, int(p.trailer.OffsetIntSize)); err != nil {
+			return err
+		}
 	}
 
-	binary.Write(p.writer, binary.BigEndian, p.trailer)
+	return binary.Write(p.writer, binary.BigEndian, p.trailer)
 }
 
-func (p *bplistGenerator) writePlistValue(pval cfValue) {
+func (p *bplistGenerator) writePlistValue(pval cfValue) error {
 	if pval == nil {
-		return
+		return nil
 	}
 
 	switch pval := pval.(type) {
 	case *cfDictionary:
-		p.writeDictionaryTag(pval)
+		return p.writeDictionaryTag(pval)
 	case *cfArray:
-		p.writeArrayTag(pval.values)
+		return p.writeArrayTag(pval.values)
 	case cfString:
-		p.writeStringTag(string(pval))
+		return p.writeStringTag(string(pval))
 	case *cfNumber:
-		p.writeIntTag(pval.signed, pval.value)
+		return p.writeIntTag(pval.signed, pval.value)
 	case *cfReal:
 		if pval.wide {
-			p.writeRealTag(pval.value, 64)
+			return p.writeRealTag(pval.value, 64)
 		} else {
-			p.writeRealTag(pval.value, 32)
+			return p.writeRealTag(pval.value, 32)
 		}
 	case cfBoolean:
-		p.writeBoolTag(bool(pval))
+		return p.writeBoolTag(bool(pval))
 	case cfData:
-		p.writeDataTag([]byte(pval))
+		return p.writeDataTag([]byte(pval))
 	case cfDate:
-		p.writeDateTag(time.Time(pval))
+		return p.writeDateTag(time.Time(pval))
 	case cfUID:
-		p.writeUIDTag(UID(pval))
+		return p.writeUIDTag(UID(pval))
 	default:
-		panic(fmt.Errorf("unknown plist type %t", pval))
+		return fmt.Errorf("unknown plist type %t", pval)
 	}
 }
 
-func (p *bplistGenerator) writeSizedInt(n uint64, nbytes int) {
+func (p *bplistGenerator) writeSizedInt(n uint64, nbytes int) error {
 	var val any
 	switch nbytes {
 	case 1:
@@ -141,20 +147,20 @@ func (p *bplistGenerator) writeSizedInt(n uint64, nbytes int) {
 	case 8:
 		val = n
 	default:
-		panic(errors.New("illegal integer size"))
+		return errors.New("illegal integer size")
 	}
-	binary.Write(p.writer, binary.BigEndian, val)
+	return binary.Write(p.writer, binary.BigEndian, val)
 }
 
-func (p *bplistGenerator) writeBoolTag(v bool) {
+func (p *bplistGenerator) writeBoolTag(v bool) error {
 	tag := uint8(bpTagBoolFalse)
 	if v {
 		tag = bpTagBoolTrue
 	}
-	binary.Write(p.writer, binary.BigEndian, tag)
+	return binary.Write(p.writer, binary.BigEndian, tag)
 }
 
-func (p *bplistGenerator) writeIntTag(signed bool, n uint64) {
+func (p *bplistGenerator) writeIntTag(signed bool, n uint64) error {
 	var tag uint8
 	var val any
 	switch {
@@ -178,26 +184,32 @@ func (p *bplistGenerator) writeIntTag(signed bool, n uint64) {
 		tag = bpTagInteger | 0x3
 	}
 
-	binary.Write(p.writer, binary.BigEndian, tag)
+	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+		return err
+	}
 	if tag&0xF == 0x4 {
 		// SInt128; in the absence of true 128-bit integers in Go,
 		// we'll just fake the top half. We only got here because
 		// we had an unsigned 64-bit int that didn't fit,
 		// so sign extend it with zeroes.
-		binary.Write(p.writer, binary.BigEndian, uint64(0))
+		if err := binary.Write(p.writer, binary.BigEndian, uint64(0)); err != nil {
+			return err
+		}
 	}
-	binary.Write(p.writer, binary.BigEndian, val)
+	return binary.Write(p.writer, binary.BigEndian, val)
 }
 
-func (p *bplistGenerator) writeUIDTag(u UID) {
+func (p *bplistGenerator) writeUIDTag(u UID) error {
 	nbytes := bplistMinimumIntSize(uint64(u))
 	tag := bpTagUID | uint8((nbytes - 1))
 
-	binary.Write(p.writer, binary.BigEndian, tag)
-	p.writeSizedInt(uint64(u), nbytes)
+	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+		return err
+	}
+	return p.writeSizedInt(uint64(u), nbytes)
 }
 
-func (p *bplistGenerator) writeRealTag(n float64, bits int) {
+func (p *bplistGenerator) writeRealTag(n float64, bits int) error {
 	var tag uint8 = bpTagReal | 0x3
 	var val any = n
 	if bits == 32 {
@@ -205,20 +217,24 @@ func (p *bplistGenerator) writeRealTag(n float64, bits int) {
 		tag = bpTagReal | 0x2
 	}
 
-	binary.Write(p.writer, binary.BigEndian, tag)
-	binary.Write(p.writer, binary.BigEndian, val)
+	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+		return err
+	}
+	return binary.Write(p.writer, binary.BigEndian, val)
 }
 
-func (p *bplistGenerator) writeDateTag(t time.Time) {
+func (p *bplistGenerator) writeDateTag(t time.Time) error {
 	tag := uint8(bpTagDate) | 0x3
 	val := float64(t.In(time.UTC).UnixNano()) / float64(time.Second)
 	val -= 978307200 // Adjust to Apple Epoch
 
-	binary.Write(p.writer, binary.BigEndian, tag)
-	binary.Write(p.writer, binary.BigEndian, val)
+	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+		return err
+	}
+	return binary.Write(p.writer, binary.BigEndian, val)
 }
 
-func (p *bplistGenerator) writeCountedTag(tag uint8, count uint64) {
+func (p *bplistGenerator) writeCountedTag(tag uint8, count uint64) error {
 	marker := tag
 	if count >= 0xF {
 		marker |= 0xF
@@ -226,42 +242,52 @@ func (p *bplistGenerator) writeCountedTag(tag uint8, count uint64) {
 		marker |= uint8(count)
 	}
 
-	binary.Write(p.writer, binary.BigEndian, marker)
+	if err := binary.Write(p.writer, binary.BigEndian, marker); err != nil {
+		return err
+	}
 
 	if count >= 0xF {
-		p.writeIntTag(false, count)
+		return p.writeIntTag(false, count)
 	}
+	return nil
 }
 
-func (p *bplistGenerator) writeDataTag(data []byte) {
-	p.writeCountedTag(bpTagData, uint64(len(data)))
-	binary.Write(p.writer, binary.BigEndian, data)
+func (p *bplistGenerator) writeDataTag(data []byte) error {
+	if err := p.writeCountedTag(bpTagData, uint64(len(data))); err != nil {
+		return err
+	}
+	return binary.Write(p.writer, binary.BigEndian, data)
 }
 
-func (p *bplistGenerator) writeStringTag(str string) {
+func (p *bplistGenerator) writeStringTag(str string) error {
 	for _, r := range str {
 		if r > 0x7F {
 			utf16Runes := utf16.Encode([]rune(str))
-			p.writeCountedTag(bpTagUTF16String, uint64(len(utf16Runes)))
-			binary.Write(p.writer, binary.BigEndian, utf16Runes)
-			return
+			if err := p.writeCountedTag(bpTagUTF16String, uint64(len(utf16Runes))); err != nil {
+				return err
+			}
+			return binary.Write(p.writer, binary.BigEndian, utf16Runes)
 		}
 	}
 
-	p.writeCountedTag(bpTagASCIIString, uint64(len(str)))
-	binary.Write(p.writer, binary.BigEndian, []byte(str))
+	if err := p.writeCountedTag(bpTagASCIIString, uint64(len(str))); err != nil {
+		return err
+	}
+	return binary.Write(p.writer, binary.BigEndian, []byte(str))
 }
 
-func (p *bplistGenerator) writeDictionaryTag(dict *cfDictionary) {
+func (p *bplistGenerator) writeDictionaryTag(dict *cfDictionary) error {
 	// assumption: sorted already; flattenPlistValue did this.
 	cnt := len(dict.keys)
-	p.writeCountedTag(bpTagDictionary, uint64(cnt))
+	if err := p.writeCountedTag(bpTagDictionary, uint64(cnt)); err != nil {
+		return err
+	}
 	vals := make([]uint64, cnt*2)
 	for i, k := range dict.keys {
 		// invariant: keys have already been "uniqued" (as PStrings)
 		keyIdx, ok := p.objmap[cfString(k).hash()]
 		if !ok {
-			panic(errors.New("failed to find key " + k + " in object map during serialization"))
+			return errors.New("failed to find key " + k + " in object map during serialization")
 		}
 		vals[i] = keyIdx
 	}
@@ -270,26 +296,34 @@ func (p *bplistGenerator) writeDictionaryTag(dict *cfDictionary) {
 		// invariant: values have already been "uniqued"
 		objIdx, ok := p.indexForPlistValue(v)
 		if !ok {
-			panic(errors.New("failed to find value in object map during serialization"))
+			return errors.New("failed to find value in object map during serialization")
 		}
 		vals[i+cnt] = objIdx
 	}
 
 	for _, v := range vals {
-		p.writeSizedInt(v, int(p.trailer.ObjectRefSize))
+		if err := p.writeSizedInt(v, int(p.trailer.ObjectRefSize)); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (p *bplistGenerator) writeArrayTag(arr []cfValue) {
-	p.writeCountedTag(bpTagArray, uint64(len(arr)))
+func (p *bplistGenerator) writeArrayTag(arr []cfValue) error {
+	if err := p.writeCountedTag(bpTagArray, uint64(len(arr))); err != nil {
+		return err
+	}
 	for _, v := range arr {
 		objIdx, ok := p.indexForPlistValue(v)
 		if !ok {
-			panic(errors.New("failed to find value in object map during serialization"))
+			return errors.New("failed to find value in object map during serialization")
 		}
 
-		p.writeSizedInt(objIdx, int(p.trailer.ObjectRefSize))
+		if err := p.writeSizedInt(objIdx, int(p.trailer.ObjectRefSize)); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (p *bplistGenerator) Indent(i string) {
@@ -298,6 +332,6 @@ func (p *bplistGenerator) Indent(i string) {
 
 func newBplistGenerator(w io.Writer) *bplistGenerator {
 	return &bplistGenerator{
-		writer: &countedWriter{Writer: mustWriter{w}},
+		writer: &countedWriter{Writer: w},
 	}
 }

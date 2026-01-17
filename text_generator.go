@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,29 +25,30 @@ var (
 	padding             = "0000"
 )
 
-func (p *textPlistGenerator) generateDocument(pval cfValue) {
-	p.writePlistValue(pval)
+func (p *textPlistGenerator) generateDocument(pval cfValue) error {
+	return p.writePlistValue(pval)
 }
 
 func (p *textPlistGenerator) plistQuotedString(str string) string {
 	if str == "" {
 		return `""`
 	}
-	s := ""
+	var sb strings.Builder
+	sb.Grow(len(str) + 2) // 预分配空间
 	quot := false
 	for _, r := range str {
 		if r > 0xFF {
 			quot = true
-			s += `\U`
+			sb.WriteString(`\U`)
 			us := strconv.FormatInt(int64(r), 16)
-			s += padding[len(us):]
-			s += us
+			sb.WriteString(padding[len(us):])
+			sb.WriteString(us)
 		} else if r > 0x7F {
 			quot = true
-			s += `\`
+			sb.WriteByte('\\')
 			us := strconv.FormatInt(int64(r), 8)
-			s += padding[1+len(us):]
-			s += us
+			sb.WriteString(padding[1+len(us):])
+			sb.WriteString(us)
 		} else {
 			c := uint8(r)
 			if p.quotableTable.ContainsByte(c) {
@@ -55,28 +57,28 @@ func (p *textPlistGenerator) plistQuotedString(str string) string {
 
 			switch c {
 			case '\a':
-				s += `\a`
+				sb.WriteString(`\a`)
 			case '\b':
-				s += `\b`
+				sb.WriteString(`\b`)
 			case '\v':
-				s += `\v`
+				sb.WriteString(`\v`)
 			case '\f':
-				s += `\f`
+				sb.WriteString(`\f`)
 			case '\\':
-				s += `\\`
+				sb.WriteString(`\\`)
 			case '"':
-				s += `\"`
+				sb.WriteString(`\"`)
 			case '\t', '\r', '\n':
 				fallthrough
 			default:
-				s += string(c)
+				sb.WriteByte(c)
 			}
 		}
 	}
 	if quot {
-		s = `"` + s + `"`
+		return `"` + sb.String() + `"`
 	}
-	return s
+	return sb.String()
 }
 
 func (p *textPlistGenerator) deltaIndent(depthDelta int) {
@@ -87,84 +89,139 @@ func (p *textPlistGenerator) deltaIndent(depthDelta int) {
 	}
 }
 
-func (p *textPlistGenerator) writeIndent() {
+func (p *textPlistGenerator) writeIndent() error {
 	if len(p.indent) == 0 {
-		return
+		return nil
 	}
-	if len(p.indent) > 0 {
-		p.writer.Write([]byte("\n"))
-		for i := 0; i < p.depth; i++ {
-			io.WriteString(p.writer, p.indent)
+	if _, err := p.writer.Write([]byte("\n")); err != nil {
+		return err
+	}
+	for i := 0; i < p.depth; i++ {
+		if _, err := io.WriteString(p.writer, p.indent); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
-func (p *textPlistGenerator) writePlistValue(pval cfValue) {
+func (p *textPlistGenerator) writePlistValue(pval cfValue) error {
 	if pval == nil {
-		return
+		return nil
 	}
 
 	switch pval := pval.(type) {
 	case *cfDictionary:
 		pval.sort()
-		p.writer.Write([]byte(`{`))
+		if _, err := p.writer.Write([]byte(`{`)); err != nil {
+			return err
+		}
 		p.deltaIndent(1)
 		for i, k := range pval.keys {
-			p.writeIndent()
-			io.WriteString(p.writer, p.plistQuotedString(k))
-			p.writer.Write(p.dictKvDelimiter)
-			p.writePlistValue(pval.values[i])
-			p.writer.Write(p.dictEntryDelimiter)
+			if err := p.writeIndent(); err != nil {
+				return err
+			}
+			if _, err := io.WriteString(p.writer, p.plistQuotedString(k)); err != nil {
+				return err
+			}
+			if _, err := p.writer.Write(p.dictKvDelimiter); err != nil {
+				return err
+			}
+			if err := p.writePlistValue(pval.values[i]); err != nil {
+				return err
+			}
+			if _, err := p.writer.Write(p.dictEntryDelimiter); err != nil {
+				return err
+			}
 		}
 		p.deltaIndent(-1)
-		p.writeIndent()
-		p.writer.Write([]byte(`}`))
+		if err := p.writeIndent(); err != nil {
+			return err
+		}
+		if _, err := p.writer.Write([]byte(`}`)); err != nil {
+			return err
+		}
 	case *cfArray:
-		p.writer.Write([]byte(`(`))
+		if _, err := p.writer.Write([]byte(`(`)); err != nil {
+			return err
+		}
 		p.deltaIndent(1)
 		for _, v := range pval.values {
-			p.writeIndent()
-			p.writePlistValue(v)
-			p.writer.Write(p.arrayDelimiter)
+			if err := p.writeIndent(); err != nil {
+				return err
+			}
+			if err := p.writePlistValue(v); err != nil {
+				return err
+			}
+			if _, err := p.writer.Write(p.arrayDelimiter); err != nil {
+				return err
+			}
 		}
 		p.deltaIndent(-1)
-		p.writeIndent()
-		p.writer.Write([]byte(`)`))
+		if err := p.writeIndent(); err != nil {
+			return err
+		}
+		if _, err := p.writer.Write([]byte(`)`)); err != nil {
+			return err
+		}
 	case cfString:
-		io.WriteString(p.writer, p.plistQuotedString(string(pval)))
+		if _, err := io.WriteString(p.writer, p.plistQuotedString(string(pval))); err != nil {
+			return err
+		}
 	case *cfNumber:
 		if p.format == GNUStepFormat {
-			p.writer.Write([]byte(`<*I`))
+			if _, err := p.writer.Write([]byte(`<*I`)); err != nil {
+				return err
+			}
 		}
 		if pval.signed {
-			io.WriteString(p.writer, strconv.FormatInt(int64(pval.value), 10))
+			if _, err := io.WriteString(p.writer, strconv.FormatInt(int64(pval.value), 10)); err != nil {
+				return err
+			}
 		} else {
-			io.WriteString(p.writer, strconv.FormatUint(pval.value, 10))
+			if _, err := io.WriteString(p.writer, strconv.FormatUint(pval.value, 10)); err != nil {
+				return err
+			}
 		}
 		if p.format == GNUStepFormat {
-			p.writer.Write([]byte(`>`))
+			if _, err := p.writer.Write([]byte(`>`)); err != nil {
+				return err
+			}
 		}
 	case *cfReal:
 		if p.format == GNUStepFormat {
-			p.writer.Write([]byte(`<*R`))
+			if _, err := p.writer.Write([]byte(`<*R`)); err != nil {
+				return err
+			}
 		}
 		// GNUstep does not differentiate between 32/64-bit floats.
-		io.WriteString(p.writer, strconv.FormatFloat(pval.value, 'g', -1, 64))
+		if _, err := io.WriteString(p.writer, strconv.FormatFloat(pval.value, 'g', -1, 64)); err != nil {
+			return err
+		}
 		if p.format == GNUStepFormat {
-			p.writer.Write([]byte(`>`))
+			if _, err := p.writer.Write([]byte(`>`)); err != nil {
+				return err
+			}
 		}
 	case cfBoolean:
 		if p.format == GNUStepFormat {
 			if pval {
-				p.writer.Write([]byte(`<*BY>`))
+				if _, err := p.writer.Write([]byte(`<*BY>`)); err != nil {
+					return err
+				}
 			} else {
-				p.writer.Write([]byte(`<*BN>`))
+				if _, err := p.writer.Write([]byte(`<*BN>`)); err != nil {
+					return err
+				}
 			}
 		} else {
 			if pval {
-				p.writer.Write([]byte(`1`))
+				if _, err := p.writer.Write([]byte(`1`)); err != nil {
+					return err
+				}
 			} else {
-				p.writer.Write([]byte(`0`))
+				if _, err := p.writer.Write([]byte(`0`)); err != nil {
+					return err
+				}
 			}
 		}
 	case cfData:
@@ -173,7 +230,9 @@ func (p *textPlistGenerator) writePlistValue(pval cfValue) {
 		var asc = 9
 		hexencoded[8] = ' '
 
-		p.writer.Write([]byte(`<`))
+		if _, err := p.writer.Write([]byte(`<`)); err != nil {
+			return err
+		}
 		b := []byte(pval)
 		for i := 0; i < len(b); i += 4 {
 			l = i + 4
@@ -186,20 +245,33 @@ func (p *textPlistGenerator) writePlistValue(pval cfValue) {
 			// Fill the buffer (only up to 8 characters, to preserve the space we implicitly include
 			// at the end of every encode)
 			hex.Encode(hexencoded[:8], b[i:l])
-			io.WriteString(p.writer, string(hexencoded[:asc]))
+			if _, err := io.WriteString(p.writer, string(hexencoded[:asc])); err != nil {
+				return err
+			}
 		}
-		p.writer.Write([]byte(`>`))
+		if _, err := p.writer.Write([]byte(`>`)); err != nil {
+			return err
+		}
 	case cfDate:
 		if p.format == GNUStepFormat {
-			p.writer.Write([]byte(`<*D`))
-			io.WriteString(p.writer, time.Time(pval).In(time.UTC).Format(textPlistTimeLayout))
-			p.writer.Write([]byte(`>`))
+			if _, err := p.writer.Write([]byte(`<*D`)); err != nil {
+				return err
+			}
+			if _, err := io.WriteString(p.writer, time.Time(pval).In(time.UTC).Format(textPlistTimeLayout)); err != nil {
+				return err
+			}
+			if _, err := p.writer.Write([]byte(`>`)); err != nil {
+				return err
+			}
 		} else {
-			io.WriteString(p.writer, p.plistQuotedString(time.Time(pval).In(time.UTC).Format(textPlistTimeLayout)))
+			if _, err := io.WriteString(p.writer, p.plistQuotedString(time.Time(pval).In(time.UTC).Format(textPlistTimeLayout))); err != nil {
+				return err
+			}
 		}
 	case cfUID:
-		p.writePlistValue(pval.toDict())
+		return p.writePlistValue(pval.toDict())
 	}
+	return nil
 }
 
 func (p *textPlistGenerator) Indent(i string) {
@@ -218,7 +290,7 @@ func newTextPlistGenerator(w io.Writer, format int) *textPlistGenerator {
 		table = &gsQuotable
 	}
 	return &textPlistGenerator{
-		writer:             mustWriter{w},
+		writer:             w,
 		format:             format,
 		quotableTable:      table,
 		dictKvDelimiter:    []byte(`=`),

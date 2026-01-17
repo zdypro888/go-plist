@@ -1,20 +1,14 @@
-// +build !appengine
+//go:build !appengine
 
 package plist
 
-import (
-	"reflect"
-	"unsafe"
-)
+import "unsafe"
 
-func zeroCopy8BitString(buf []byte, off int, len int) string {
-	if len == 0 {
+// zeroCopy8BitString 从字节切片创建字符串，不复制底层数据
+// Go 1.20+ 使用 unsafe.String 替代已废弃的 reflect.StringHeader
+func zeroCopy8BitString(buf []byte, off int, length int) string {
+	if length == 0 {
 		return ""
 	}
-
-	var s string
-	hdr := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	hdr.Data = uintptr(unsafe.Pointer(&buf[off]))
-	hdr.Len = len
-	return s
+	return unsafe.String(&buf[off], length)
 }
