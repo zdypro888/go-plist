@@ -295,10 +295,17 @@ func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) err
 			val.Set(reflect.MakeMap(typ))
 		}
 
+		keyParse, err := unmarshalMapKeyFunc(typ.Key())
+		if err != nil {
+			return err
+		}
 		for i, k := range dict.keys {
 			sval := dict.values[i]
 
-			keyv := reflect.ValueOf(k).Convert(typ.Key())
+			keyv, err := keyParse(k)
+			if err != nil {
+				return err
+			}
 			mapElem := reflect.New(typ.Elem()).Elem()
 
 			if err := p.unmarshal(sval, mapElem); err != nil {
@@ -359,4 +366,63 @@ func (p *Decoder) dictionaryInterface(dict *cfDictionary) map[string]any {
 		out[k] = p.valueInterface(subv)
 	}
 	return out
+}
+
+// unmarshalMapKeyFunc returns a function that parses a plist dictionary key string into a map key reflect.Value.
+func unmarshalMapKeyFunc(keyType reflect.Type) (func(string) (reflect.Value, error), error) {
+	if reflect.PointerTo(keyType).Implements(textUnmarshalerType) {
+		return func(s string) (reflect.Value, error) {
+			kp := reflect.New(keyType)
+			if err := kp.Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(s)); err != nil {
+				return reflect.Value{}, err
+			}
+			return kp.Elem(), nil
+		}, nil
+	}
+	switch keyType.Kind() {
+	case reflect.String:
+		return func(s string) (reflect.Value, error) { return reflect.ValueOf(s).Convert(keyType), nil }, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return func(s string) (reflect.Value, error) {
+			n, err := strconv.ParseInt(s, 10, keyType.Bits())
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			kv := reflect.New(keyType).Elem()
+			kv.SetInt(n)
+			return kv, nil
+		}, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return func(s string) (reflect.Value, error) {
+			n, err := strconv.ParseUint(s, 10, keyType.Bits())
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			kv := reflect.New(keyType).Elem()
+			kv.SetUint(n)
+			return kv, nil
+		}, nil
+	case reflect.Float32:
+		return func(s string) (reflect.Value, error) {
+			f, err := strconv.ParseFloat(s, 32)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			kv := reflect.New(keyType).Elem()
+			kv.SetFloat(f)
+			return kv, nil
+		}, nil
+	case reflect.Float64:
+		return func(s string) (reflect.Value, error) {
+			f, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			kv := reflect.New(keyType).Elem()
+			kv.SetFloat(f)
+			return kv, nil
+		}, nil
+	default:
+		return nil, fmt.Errorf("plist: unsupported map key type %v", keyType)
+	}
 }

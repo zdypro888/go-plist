@@ -2,7 +2,9 @@ package plist
 
 import (
 	"encoding"
+	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -155,28 +157,69 @@ func (p *Encoder) marshal(val reflect.Value) (cfValue, error) {
 			return &cfArray{values}, nil
 		}
 	case reflect.Map:
-		if typ.Key().Kind() != reflect.String {
-			return nil, &unknownTypeError{typ}
+		keyStr, err := marshalMapKeyFunc(typ.Key())
+		if err != nil {
+			return nil, err
 		}
 		l := val.Len()
 		dict := &cfDictionary{
 			keys:   make([]string, 0, l),
 			values: make([]cfValue, 0, l),
 		}
-		// 使用 MapRange 替代 MapKeys + MapIndex，减少内存分配
 		iter := val.MapRange()
 		for iter.Next() {
+			k, err := keyStr(iter.Key())
+			if err != nil {
+				return nil, err
+			}
 			subpval, err := p.marshal(iter.Value())
 			if err != nil {
 				return nil, err
 			}
 			if subpval != nil {
-				dict.keys = append(dict.keys, iter.Key().String())
+				dict.keys = append(dict.keys, k)
 				dict.values = append(dict.values, subpval)
 			}
 		}
 		return dict, nil
 	default:
 		return nil, &unknownTypeError{typ}
+	}
+}
+
+// marshalMapKeyFunc returns a function that converts a map key reflect.Value to a string.
+func marshalMapKeyFunc(keyType reflect.Type) (func(reflect.Value) (string, error), error) {
+	if keyType.Implements(textMarshalerType) {
+		return func(v reflect.Value) (string, error) {
+			b, err := v.Interface().(encoding.TextMarshaler).MarshalText()
+			return string(b), err
+		}, nil
+	}
+	if reflect.PointerTo(keyType).Implements(textMarshalerType) {
+		return func(v reflect.Value) (string, error) {
+			if v.CanAddr() {
+				b, err := v.Addr().Interface().(encoding.TextMarshaler).MarshalText()
+				return string(b), err
+			}
+			// 不可寻址时创建临时指针
+			tmp := reflect.New(keyType)
+			tmp.Elem().Set(v)
+			b, err := tmp.Interface().(encoding.TextMarshaler).MarshalText()
+			return string(b), err
+		}, nil
+	}
+	switch keyType.Kind() {
+	case reflect.String:
+		return func(v reflect.Value) (string, error) { return v.String(), nil }, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return func(v reflect.Value) (string, error) { return strconv.FormatInt(v.Int(), 10), nil }, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return func(v reflect.Value) (string, error) { return strconv.FormatUint(v.Uint(), 10), nil }, nil
+	case reflect.Float32:
+		return func(v reflect.Value) (string, error) { return strconv.FormatFloat(v.Float(), 'g', -1, 32), nil }, nil
+	case reflect.Float64:
+		return func(v reflect.Value) (string, error) { return strconv.FormatFloat(v.Float(), 'g', -1, 64), nil }, nil
+	default:
+		return nil, fmt.Errorf("plist: unsupported map key type %v", keyType)
 	}
 }

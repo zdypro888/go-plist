@@ -108,8 +108,20 @@ func (m Dictionary) unmarshal(v any, val reflect.Value) error {
 		switch val.Kind() {
 		case reflect.Map:
 			val.Set(reflect.MakeMap(val.Type()))
+			keyParse, err := unmarshalMapKeyFunc(val.Type().Key())
+			if err != nil {
+				return err
+			}
 			for mk, mv := range pval {
-				val.SetMapIndex(reflect.ValueOf(mk), reflect.ValueOf(mv))
+				keyv, err := keyParse(mk)
+				if err != nil {
+					return err
+				}
+				mapElem := reflect.New(val.Type().Elem()).Elem()
+				if err := m.unmarshal(mv, mapElem); err != nil {
+					return err
+				}
+				val.SetMapIndex(keyv, mapElem)
 			}
 		case reflect.Struct:
 			return m.unmarshalStruct(pval, val)
