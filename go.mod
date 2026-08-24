@@ -1,6 +1,6 @@
 module github.com/zdypro888/go-plist
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/google/go-cmp v0.7.0
