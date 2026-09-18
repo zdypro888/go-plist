@@ -17,6 +17,7 @@ type xmlPlistParser struct {
 	whitespaceReplacer *strings.Replacer
 	ntags              int
 	idrefs             map[string]cfValue
+	depth              int
 }
 
 func (p *xmlPlistParser) parseDocument() (pval cfValue, parseError error) {
@@ -63,6 +64,12 @@ func (p *xmlPlistParser) storeOrFindXMLElementValue(element xml.StartElement, va
 }
 
 func (p *xmlPlistParser) parseXMLElement(element xml.StartElement) cfValue {
+	if p.depth >= maxNestingDepth {
+		panic(fmt.Errorf("maximum nesting depth (%d) exceeded", maxNestingDepth))
+	}
+	p.depth++
+	defer func() { p.depth-- }()
+
 	var charData xml.CharData
 	switch element.Name.Local {
 	case "plist":

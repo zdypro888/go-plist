@@ -47,8 +47,7 @@ func (p *bplistParser) validateDocumentTrailer() {
 		panic(errors.New("offset table isn't long enough to address every object"))
 	}
 
-	maxObjectRef := uint64(1) << (8 * p.trailer.ObjectRefSize)
-	if p.trailer.NumObjects > maxObjectRef {
+	if p.trailer.ObjectRefSize < 8 && p.trailer.NumObjects > uint64(1)<<(8*uint64(p.trailer.ObjectRefSize)) {
 		panic(fmt.Errorf("more objects (%v) than object ref size (%v bytes) can support", p.trailer.NumObjects, p.trailer.ObjectRefSize))
 	}
 
@@ -177,6 +176,9 @@ func (p *bplistParser) objectAtIndex(index uint64) cfValue {
 }
 
 func (p *bplistParser) pushNestedObject(off offset) {
+	if len(p.containerStack) >= maxNestingDepth {
+		panic(fmt.Errorf("collection@%#x exceeds maximum nesting depth (%d)", off, maxNestingDepth))
+	}
 	for _, v := range p.containerStack {
 		if v == off {
 			p.panicNestedObject(off)
@@ -265,7 +267,13 @@ func (p *bplistParser) countForTagAtOffset(off offset) (uint64, offset) {
 	tag := p.buffer[off]
 	cnt := uint64(tag & 0x0F)
 	if cnt == 0xF {
+		start := off
 		cnt, _, off = p.parseIntegerAtOffset(off + 1)
+		// no object can hold more elements than the file has bytes; rejecting
+		// larger counts here keeps the callers' size arithmetic from wrapping.
+		if cnt > uint64(len(p.buffer)) {
+			panic(fmt.Errorf("object@%#x has an implausible length (%v)", start, cnt))
+		}
 		return cnt, off
 	}
 	return cnt, off + 1

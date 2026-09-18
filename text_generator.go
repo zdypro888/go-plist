@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 type textPlistGenerator struct {
@@ -37,7 +38,15 @@ func (p *textPlistGenerator) plistQuotedString(str string) string {
 	sb.Grow(len(str) + 2) // 预分配空间
 	quot := false
 	for _, r := range str {
-		if r > 0xFF {
+		if r > 0xFFFF {
+			// \U escapes are UTF-16 code units; emit a surrogate pair
+			quot = true
+			r1, r2 := utf16.EncodeRune(r)
+			for _, u := range [2]rune{r1, r2} {
+				sb.WriteString(`\U`)
+				sb.WriteString(strconv.FormatInt(int64(u), 16))
+			}
+		} else if r > 0xFF {
 			quot = true
 			sb.WriteString(`\U`)
 			us := strconv.FormatInt(int64(r), 16)

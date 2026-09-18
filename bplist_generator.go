@@ -225,7 +225,8 @@ func (p *bplistGenerator) writeRealTag(n float64, bits int) error {
 
 func (p *bplistGenerator) writeDateTag(t time.Time) error {
 	tag := uint8(bpTagDate) | 0x3
-	val := float64(t.In(time.UTC).UnixNano()) / float64(time.Second)
+	// UnixNano overflows outside 1678-2262; build the value from seconds instead
+	val := float64(t.Unix()) + float64(t.Nanosecond())/float64(time.Second)
 	val -= 978307200 // Adjust to Apple Epoch
 
 	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {

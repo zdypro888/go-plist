@@ -126,10 +126,13 @@ func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) error {
 					p.WriteString(fmt.Sprintf("<%s/>", xmlKeyTag))
 				}
 			} else {
+				p.WriteString("<" + xmlKeyTag + ">")
+				if err := xml.EscapeText(p, []byte(k)); err != nil {
+					return err
+				}
+				p.WriteString("</" + xmlKeyTag + ">")
 				if p.indent != "" {
-					p.WriteString(fmt.Sprintf("<%s>%s</%s>\n", xmlKeyTag, k, xmlKeyTag))
-				} else {
-					p.WriteString(fmt.Sprintf("<%s>%s</%s>", xmlKeyTag, k, xmlKeyTag))
+					p.WriteString("\n")
 				}
 			}
 

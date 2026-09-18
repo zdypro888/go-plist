@@ -2,6 +2,7 @@ package plist
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"reflect"
 )
@@ -76,6 +77,18 @@ func (p *Decoder) DecodeForReflect(refv reflect.Value) error {
 		}
 	}
 
+	if refv.IsValid() && !refv.CanSet() {
+		switch refv.Kind() {
+		case reflect.Pointer:
+			if refv.IsNil() {
+				return errors.New("plist: cannot decode into nil " + refv.Type().String())
+			}
+		case reflect.Map:
+			// a non-nil map can be filled in place
+		default:
+			return errors.New("plist: cannot decode into non-pointer " + refv.Type().String())
+		}
+	}
 	return p.unmarshal(pval, refv)
 }
 

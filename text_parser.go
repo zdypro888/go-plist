@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -26,6 +27,7 @@ type textPlistParser struct {
 	start int
 	pos   int
 	width int
+	depth int
 }
 
 func convertU16(buffer []byte, bo binary.ByteOrder) (string, error) {
@@ -267,7 +269,21 @@ func (p *textPlistParser) parseEscape() string {
 	case 'x': // This is our extension.
 		s = string(rune(p.parseHexDigits(2)))
 	case 'u', 'U': // 'u' is a GNUstep extension.
-		s = string(rune(p.parseHexDigits(4)))
+		r := rune(p.parseHexDigits(4))
+		if utf16.IsSurrogate(r) {
+			// escapes are UTF-16 code units: join a following low surrogate
+			save := p.pos
+			if p.next() == '\\' {
+				if c := p.next(); c == 'u' || c == 'U' {
+					if pair := utf16.DecodeRune(r, rune(p.parseHexDigits(4))); pair != unicode.ReplacementChar {
+						s = string(pair)
+						break
+					}
+				}
+			}
+			p.pos = save
+		}
+		s = string(r)
 	case '0', '1', '2', '3', '4', '5', '6', '7':
 		p.backup() // we've already consumed one of the digits
 		s = string(rune(p.parseOctalDigits(3)))
@@ -283,7 +299,7 @@ func (p *textPlistParser) parseQuotedString() cfString {
 	p.ignore() // ignore the "
 
 	slowPath := false
-	s := ""
+	var s strings.Builder
 
 	for {
 		p.scanUntilAny(`"\`)
@@ -296,14 +312,14 @@ func (p *textPlistParser) parseQuotedString() cfString {
 			if !slowPath {
 				return cfString(section)
 			} else {
-				s += section
-				return cfString(s)
+				s.WriteString(section)
+				return cfString(s.String())
 			}
 		case '\\':
 			slowPath = true
-			s += p.emit()
+			s.WriteString(p.emit())
 			p.next() // consume \
-			s += p.parseEscape()
+			s.WriteString(p.parseEscape())
 		}
 	}
 }
@@ -397,11 +413,6 @@ outer:
 		}
 
 		pval := p.parsePlistValue() // whitespace is consumed within
-		if str, ok := pval.(cfString); ok && string(str) == "" {
-			// Empty strings in arrays are apparently skipped?
-			// TODO: Figure out why this was implemented.
-			continue
-		}
 		values = append(values, pval)
 	}
 	return &cfArray{values}
@@ -442,6 +453,10 @@ func (p *textPlistParser) parseGNUStepValue() cfValue {
 		// GNUStep tolerates malformed quoted values, as in <*I5"> and <*I"5>
 		// It purportedly does so by stripping the trailing quote
 		v = v[:len(v)-1]
+	}
+
+	if len(v) == 0 {
+		p.error("empty GNUStep extended value")
 	}
 
 	switch typ {
@@ -541,6 +556,12 @@ func (p *textPlistParser) parseHexData() cfData {
 }
 
 func (p *textPlistParser) parsePlistValue() cfValue {
+	if p.depth >= maxNestingDepth {
+		p.error("maximum nesting depth (%d) exceeded", maxNestingDepth)
+	}
+	p.depth++
+	defer func() { p.depth-- }()
+
 	for {
 		p.skipWhitespaceAndComments()
 

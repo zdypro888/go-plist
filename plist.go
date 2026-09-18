@@ -18,6 +18,11 @@ const (
 	GNUStepFormat  = 4
 )
 
+// maxNestingDepth bounds how deeply collections may nest in a parsed document,
+// so hostile input cannot exhaust the goroutine stack (which is fatal, not a
+// recoverable panic).
+const maxNestingDepth = 512
+
 var FormatNames = map[int]string{
 	InvalidFormat:  "unknown/invalid",
 	XMLFormat:      "XML",

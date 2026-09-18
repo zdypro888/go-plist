@@ -1,7 +1,7 @@
 package plist
 
 import (
-	"hash/crc32"
+	"math"
 	"sort"
 	"strconv"
 	"time"
@@ -111,11 +111,18 @@ func (cfReal) typeName() string {
 	return "real"
 }
 
+// cfRealKey uniques reals by bit pattern, so NaN can be found again in the
+// object map and -0.0 is kept distinct from +0.0.
+type cfRealKey struct {
+	wide bool
+	bits uint64
+}
+
 func (p *cfReal) hash() any {
 	if p.wide {
-		return p.value
+		return cfRealKey{true, math.Float64bits(p.value)}
 	}
-	return float32(p.value)
+	return cfRealKey{false, uint64(math.Float32bits(float32(p.value)))}
 }
 
 type cfBoolean bool
@@ -154,11 +161,13 @@ func (cfData) typeName() string {
 	return "data"
 }
 
+// cfDataKey keeps data keys distinct from cfString keys in the object map.
+type cfDataKey string
+
 func (p cfData) hash() any {
-	// Data are uniqued by their checksums.
-	// Todo: Look at calculating this only once and storing it somewhere;
-	// crc32 is fairly quick, however.
-	return crc32.ChecksumIEEE([]byte(p))
+	// Data are uniqued by content; a checksum alone would silently merge
+	// distinct values that happen to collide.
+	return cfDataKey(p)
 }
 
 type cfDate time.Time
