@@ -18,6 +18,11 @@ type Decoder struct {
 
 	reader io.ReadSeeker
 	lax    bool
+
+	// expansion accounting, see countNode
+	root   cfValue
+	nodes  int
+	budget int
 }
 
 // Decode works like Unmarshal, except it reads the decoder stream to find property list elements.
@@ -30,7 +35,7 @@ func (p *Decoder) Decode(v any) error {
 // DecodeForReflect works like Unmarshal, except it reads the decoder stream to find property list elements.
 //
 // After Decoding, the Decoder's Format field will be set to one of the plist format constants.
-func (p *Decoder) DecodeForReflect(refv reflect.Value) error {
+func (p *Decoder) DecodeForReflect(refv reflect.Value) (decodeErr error) {
 	header := make([]byte, 6)
 	// 读取头部用于格式检测，忽略错误（可能是短文件）
 	_, _ = p.reader.Read(header)
@@ -76,6 +81,18 @@ func (p *Decoder) DecodeForReflect(refv reflect.Value) error {
 			p.Format = XMLFormat
 		}
 	}
+
+	p.root, p.nodes, p.budget = pval, 0, 0
+	defer func() {
+		p.root = nil
+		if r := recover(); r != nil {
+			if expansion, ok := r.(expansionError); ok {
+				decodeErr = expansion
+				return
+			}
+			panic(r)
+		}
+	}()
 
 	if refv.IsValid() && !refv.CanSet() && (refv.Kind() != reflect.Pointer || refv.IsNil()) {
 		// Not a usable pointer: decoding succeeds only if nothing has to be
@@ -133,4 +150,67 @@ func (p *Decoder) unmarshalUnsettable(pval cfValue, refv reflect.Value) (err err
 		}
 	}()
 	return p.unmarshal(pval, refv)
+}
+
+// A binary property list (and an XML one using IDREFs) may reference the same
+// collection many times. Decoding gives every reference its own copy, so a few
+// dozen bytes of nested, shared arrays expand exponentially (127 bytes -> 347 MB).
+// countNode is called for every value that is materialised. Documents below
+// expansionFreeNodes are never inspected; past that, the number of materialised
+// values may not exceed expansionFactor times the number of distinct values in
+// the parsed document, which no legitimately shared structure comes close to.
+const (
+	expansionFreeNodes = 1 << 20
+	expansionFactor    = 256
+)
+
+type expansionError struct{ nodes, distinct int }
+
+func (e expansionError) Error() string {
+	return fmt.Sprintf("plist: document expands to more than %d values from %d distinct ones", e.nodes, e.distinct)
+}
+
+func (p *Decoder) countNode() {
+	p.nodes++
+	if p.nodes <= expansionFreeNodes || p.root == nil {
+		return
+	}
+	if p.budget == 0 {
+		p.budget = max(expansionFreeNodes, expansionFactor*distinctValues(p.root))
+	}
+	if p.nodes > p.budget {
+		panic(expansionError{p.nodes, p.budget / expansionFactor})
+	}
+}
+
+// distinctValues counts the values of a parsed document, visiting a shared
+// collection once.
+func distinctValues(root cfValue) int {
+	seen := make(map[cfValue]struct{})
+	count := 0
+	var walk func(cfValue)
+	walk = func(v cfValue) {
+		count++
+		switch v := v.(type) {
+		case *cfArray:
+			if _, ok := seen[v]; ok {
+				return
+			}
+			seen[v] = struct{}{}
+			for _, sub := range v.values {
+				walk(sub)
+			}
+		case *cfDictionary:
+			if _, ok := seen[v]; ok {
+				return
+			}
+			seen[v] = struct{}{}
+			count += len(v.keys)
+			for _, sub := range v.values {
+				walk(sub)
+			}
+		}
+	}
+	walk(root)
+	return count
 }

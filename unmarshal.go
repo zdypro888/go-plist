@@ -91,6 +91,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 	if pval == nil {
 		return nil
 	}
+	p.countNode()
 	// Handle nil or invalid value - just parse without storing
 	if !val.IsValid() {
 		return nil
@@ -321,6 +322,7 @@ func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) err
 
 /* *Interface is modelled after encoding/json */
 func (p *Decoder) valueInterface(pval cfValue) any {
+	p.countNode()
 	switch pval := pval.(type) {
 	case cfString:
 		return string(pval)

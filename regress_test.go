@@ -256,3 +256,60 @@ func TestDecodeTargetValidation(t *testing.T) {
 		t.Errorf("map: %v %v", m, err)
 	}
 }
+
+// nestedSharedBplist builds a binary plist of `levels` arrays, each holding
+// `fanout` references to the next one: a few bytes that expand to fanout^levels.
+func nestedSharedBplist(levels, fanout int) []byte {
+	objs := make([][]byte, 0, levels+1)
+	for level := 0; level < levels; level++ {
+		o := []byte{bpTagArray | byte(fanout)}
+		for i := 0; i < fanout; i++ {
+			o = append(o, byte(level+1))
+		}
+		objs = append(objs, o)
+	}
+	objs = append(objs, []byte{bpTagASCIIString | 1, 'x'})
+	return bplistWithObjects(objs...)
+}
+
+func TestSharedCollectionsCannotExpandWithoutBound(t *testing.T) {
+	// 10^8 leaves from about 130 bytes
+	bomb := nestedSharedBplist(8, 10)
+	var v any
+	if _, err := Unmarshal(bomb, &v); err == nil {
+		t.Fatal("expected an expansion error")
+	}
+	var typed [][][][][][][][]string
+	if _, err := Unmarshal(bomb, &typed); err == nil {
+		t.Fatal("typed target: expected an expansion error")
+	}
+	// moderate sharing still decodes, every reference being its own copy
+	small := nestedSharedBplist(3, 10)
+	if _, err := Unmarshal(small, &v); err != nil {
+		t.Fatal(err)
+	}
+	outer := v.([]any)
+	if len(outer) != 10 || len(outer[0].([]any)) != 10 {
+		t.Fatalf("unexpected shape: %d", len(outer))
+	}
+	outer[0].([]any)[0] = "changed"
+	if _, same := outer[1].([]any)[0].(string); same {
+		t.Fatal("references to a shared array must stay independent copies")
+	}
+}
+
+// A large document without sharing is not affected by the expansion budget.
+func TestLargeUnsharedDocumentDecodes(t *testing.T) {
+	in := make([]int, 1<<21)
+	for i := range in {
+		in[i] = i
+	}
+	data, err := Marshal(in, BinaryFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []int
+	if _, err := Unmarshal(data, &out); err != nil || len(out) != len(in) || out[len(out)-1] != len(in)-1 {
+		t.Fatalf("len=%d err=%v", len(out), err)
+	}
+}
