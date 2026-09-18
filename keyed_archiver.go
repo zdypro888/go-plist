@@ -98,6 +98,8 @@ type Archiver struct {
 	Objects  []any        `plist:"$objects"`
 	Archiver string       `plist:"$archiver"`
 	Top      *archiverTop `plist:"$top"`
+
+	depth int // current walk depth, see enter
 }
 
 // ReadFromZipData 从压缩数据读取
@@ -143,10 +145,34 @@ func (a *Archiver) addObject(obj any) UID {
 }
 
 // Unmarshal 序列化
-func (a *Archiver) Unmarshal(v any) error {
+func (a *Archiver) Unmarshal(v any) (err error) {
+	defer a.recoverMalformed(&err)
 	return a.unmarshal(a.Objects[a.Top.Root], reflect.ValueOf(v))
 }
+
+// maxArchiveDepth bounds the object graph walk: UIDs can form a cycle, and the
+// resulting stack overflow is fatal rather than a recoverable panic.
+const maxArchiveDepth = 10000
+
+// recoverMalformed turns the runtime panics a malformed archive causes in the
+// walkers (missing $top, UID out of range, an object of an unexpected type, a
+// reference cycle) into an error. Well-formed archives never reach it.
+func (a *Archiver) recoverMalformed(err *error) {
+	a.depth = 0
+	if r := recover(); r != nil {
+		*err = fmt.Errorf("plist: malformed keyed archive: %v", r)
+	}
+}
+
+func (a *Archiver) enter() {
+	if a.depth++; a.depth > maxArchiveDepth {
+		panic("object graph is nested too deeply or contains a cycle")
+	}
+}
+
 func (a *Archiver) unmarshal(v any, val reflect.Value) error {
+	a.enter()
+	defer func() { a.depth-- }()
 	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
@@ -480,11 +506,14 @@ func (a *Archiver) marshalStruct(val reflect.Value) (UID, error) {
 }
 
 // Print 打印归档对象的调试信息
-func (a *Archiver) Print() (string, error) {
+func (a *Archiver) Print() (text string, err error) {
+	defer a.recoverMalformed(&err)
 	return a.printObject(a.Objects[a.Top.Root])
 }
 
 func (a *Archiver) printObject(v any) (string, error) {
+	a.enter()
+	defer func() { a.depth-- }()
 	switch pval := v.(type) {
 	case string:
 		return fmt.Sprintf("string(%v)", pval), nil
