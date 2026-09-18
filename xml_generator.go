@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,10 @@ func formatXMLFloat(f float64) string {
 	}
 	return strconv.FormatFloat(f, 'g', -1, 64)
 }
+
+// xmlKeyEscaper escapes only the characters that make a key malformed XML;
+// every key that was already well-formed is written byte-for-byte as before.
+var xmlKeyEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;")
 
 type xmlPlistGenerator struct {
 	*bufio.Writer
@@ -127,9 +132,7 @@ func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) error {
 				}
 			} else {
 				p.WriteString("<" + xmlKeyTag + ">")
-				if err := xml.EscapeText(p, []byte(k)); err != nil {
-					return err
-				}
+				p.WriteString(xmlKeyEscaper.Replace(k))
 				p.WriteString("</" + xmlKeyTag + ">")
 				if p.indent != "" {
 					p.WriteString("\n")

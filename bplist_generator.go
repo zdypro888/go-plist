@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"slices"
 	"time"
 	"unicode/utf16"
 )
@@ -50,6 +52,17 @@ func (p *bplistGenerator) flattenPlistValue(pval cfValue) {
 
 	switch pval := pval.(type) {
 	case *cfDictionary:
+		// nil pointers/interfaces marshal to a nil value; binary plists have no
+		// way to reference one, so drop the pair instead of panicking below.
+		if slices.Contains(pval.values, nil) {
+			keys, values := pval.keys[:0:0], pval.values[:0:0]
+			for i, v := range pval.values {
+				if v != nil {
+					keys, values = append(keys, pval.keys[i]), append(values, v)
+				}
+			}
+			pval.keys, pval.values = keys, values
+		}
 		pval.sort()
 		for _, k := range pval.keys {
 			p.flattenPlistValue(cfString(k))
@@ -58,6 +71,7 @@ func (p *bplistGenerator) flattenPlistValue(pval cfValue) {
 			p.flattenPlistValue(v)
 		}
 	case *cfArray:
+		pval.values = slices.DeleteFunc(pval.values, func(v cfValue) bool { return v == nil })
 		for _, v := range pval.values {
 			p.flattenPlistValue(v)
 		}
@@ -225,8 +239,13 @@ func (p *bplistGenerator) writeRealTag(n float64, bits int) error {
 
 func (p *bplistGenerator) writeDateTag(t time.Time) error {
 	tag := uint8(bpTagDate) | 0x3
-	// UnixNano overflows outside 1678-2262; build the value from seconds instead
-	val := float64(t.Unix()) + float64(t.Nanosecond())/float64(time.Second)
+	var val float64
+	if sec := t.Unix(); sec > math.MinInt64/int64(time.Second) && sec < math.MaxInt64/int64(time.Second) {
+		val = float64(t.In(time.UTC).UnixNano()) / float64(time.Second)
+	} else {
+		// UnixNano is undefined outside 1678-2262; build the value from seconds
+		val = float64(sec) + float64(t.Nanosecond())/float64(time.Second)
+	}
 	val -= 978307200 // Adjust to Apple Epoch
 
 	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {

@@ -2,7 +2,7 @@ package plist
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"io"
 	"reflect"
 )
@@ -77,17 +77,10 @@ func (p *Decoder) DecodeForReflect(refv reflect.Value) error {
 		}
 	}
 
-	if refv.IsValid() && !refv.CanSet() {
-		switch refv.Kind() {
-		case reflect.Pointer:
-			if refv.IsNil() {
-				return errors.New("plist: cannot decode into nil " + refv.Type().String())
-			}
-		case reflect.Map:
-			// a non-nil map can be filled in place
-		default:
-			return errors.New("plist: cannot decode into non-pointer " + refv.Type().String())
-		}
+	if refv.IsValid() && !refv.CanSet() && (refv.Kind() != reflect.Pointer || refv.IsNil()) {
+		// Not a usable pointer: decoding succeeds only if nothing has to be
+		// stored, so report reflect's panic as an error instead of crashing.
+		return p.unmarshalUnsettable(pval, refv)
 	}
 	return p.unmarshal(pval, refv)
 }
@@ -131,4 +124,13 @@ func Unmarshal(data []byte, v any) (format int, err error) {
 	err = dec.Decode(v)
 	format = dec.Format
 	return
+}
+
+func (p *Decoder) unmarshalUnsettable(pval cfValue, refv reflect.Value) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("plist: cannot decode into non-pointer or nil %v: %v", refv.Type(), r)
+		}
+	}()
+	return p.unmarshal(pval, refv)
 }

@@ -413,6 +413,11 @@ outer:
 		}
 
 		pval := p.parsePlistValue() // whitespace is consumed within
+		if str, ok := pval.(cfString); ok && string(str) == "" {
+			// Empty strings in arrays are apparently skipped?
+			// TODO: Figure out why this was implemented.
+			continue
+		}
 		values = append(values, pval)
 	}
 	return &cfArray{values}

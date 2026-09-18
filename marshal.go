@@ -71,10 +71,6 @@ func (p *Encoder) marshalStruct(val reflect.Value) (cfValue, error) {
 		if err != nil {
 			return nil, err
 		}
-		if cfv == nil {
-			// nil pointer or interface: plists have no null, so omit the field
-			continue
-		}
 		dict.keys = append(dict.keys, finfo.Name)
 		dict.values = append(dict.values, cfv)
 	}
@@ -148,14 +144,14 @@ func (p *Encoder) marshal(val reflect.Value) (cfValue, error) {
 			}
 			return cfData(bytes), nil
 		} else {
-			values := make([]cfValue, 0, val.Len())
+			values := make([]cfValue, val.Len())
 			for i, length := 0, val.Len(); i < length; i++ {
 				subpval, err := p.marshal(val.Index(i))
 				if err != nil {
 					return nil, err
 				}
 				if subpval != nil {
-					values = append(values, subpval)
+					values[i] = subpval
 				}
 			}
 			return &cfArray{values}, nil

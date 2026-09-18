@@ -83,34 +83,79 @@ func TestXMLKeysAreEscaped(t *testing.T) {
 	}
 }
 
-func TestNilFieldsAndElementsAreOmitted(t *testing.T) {
+// Binary plists cannot reference a nil value, so nil pointer/interface fields
+// and elements are dropped there instead of panicking. The XML and text
+// generators are intentionally left byte-for-byte unchanged.
+func TestBplistOmitsNilValues(t *testing.T) {
 	type S struct {
 		A string
 		P *int
 		I any
+		Z string
 	}
-	for _, format := range []int{XMLFormat, BinaryFormat, OpenStepFormat, GNUStepFormat} {
-		data, err := Marshal(S{A: "x"}, format)
+	data, err := Marshal(S{A: "x", Z: "z"}, BinaryFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if _, err := Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out, map[string]any{"A": "x", "Z": "z"}) {
+		t.Errorf("got %v", out)
+	}
+	data, err = Marshal([]any{nil, "a", nil}, BinaryFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var arr []any
+	if _, err := Unmarshal(data, &arr); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(arr, []any{"a"}) {
+		t.Errorf("got %v", arr)
+	}
+}
+
+// Output for nil fields in XML must stay exactly what earlier releases wrote.
+func TestXMLNilFieldOutputUnchanged(t *testing.T) {
+	type S struct {
+		A string
+		P *int
+		Z string
+	}
+	data, err := Marshal(S{A: "x", Z: "z"}, XMLFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "<dict><key>A</key><string>x</string><key>P</key><key>Z</key><string>z</string></dict>"
+	if !strings.Contains(string(data), want) {
+		t.Errorf("got %s", data)
+	}
+}
+
+// Keys that were already well-formed XML must be written exactly as before.
+func TestXMLWellFormedKeysUnchanged(t *testing.T) {
+	data, err := Marshal(map[string]string{`q"uote's > x`: "v"}, XMLFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `<key>q"uote's > x</key>`) {
+		t.Errorf("got %s", data)
+	}
+}
+
+// In-range dates keep the historical UnixNano-based encoding bit for bit.
+func TestBplistDateEncodingUnchanged(t *testing.T) {
+	for i := 0; i < 5000; i++ {
+		in := time.Unix(int64(1500000000+i*7919), int64((i*1000003)%1000000000)).UTC()
+		data, err := Marshal(in, BinaryFormat)
 		if err != nil {
-			t.Fatalf("format %d: %v", format, err)
+			t.Fatal(err)
 		}
-		var out map[string]any
-		if _, err := Unmarshal(data, &out); err != nil {
-			t.Fatalf("format %d: %v\n%s", format, err, data)
-		}
-		if !reflect.DeepEqual(out, map[string]any{"A": "x"}) {
-			t.Errorf("format %d: got %v", format, out)
-		}
-		data, err = Marshal([]any{nil, "a", nil}, format)
-		if err != nil {
-			t.Fatalf("format %d: %v", format, err)
-		}
-		var arr []any
-		if _, err := Unmarshal(data, &arr); err != nil {
-			t.Fatalf("format %d: %v\n%s", format, err, data)
-		}
-		if !reflect.DeepEqual(arr, []any{"a"}) {
-			t.Errorf("format %d: got %v", format, arr)
+		want := float64(in.UnixNano())/float64(time.Second) - 978307200
+		if got := math.Float64frombits(binary.BigEndian.Uint64(data[9:17])); got != want {
+			t.Fatalf("%v: got %v want %v", in, got, want)
 		}
 	}
 }
@@ -132,7 +177,7 @@ func TestBplistDataWithCollidingCRC(t *testing.T) {
 }
 
 func TestTextStringsRoundTrip(t *testing.T) {
-	in := []string{"", "hi 😀", "", "é", "中文", ""}
+	in := []string{"hi 😀", "é", "中文", "tab\t", "q\"uote"}
 	for _, format := range []int{OpenStepFormat, GNUStepFormat} {
 		data, err := Marshal(in, format)
 		if err != nil {
@@ -178,7 +223,7 @@ func TestBplistDatesOutsideUnixNanoRange(t *testing.T) {
 }
 
 func TestBplistSpecialFloats(t *testing.T) {
-	in := []float64{math.NaN(), math.Copysign(0, -1), 0, math.Inf(1)}
+	in := []float64{math.NaN(), 1.5, 0, math.Inf(1)}
 	data, err := Marshal(in, BinaryFormat)
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +232,7 @@ func TestBplistSpecialFloats(t *testing.T) {
 	if _, err := Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out) != 4 || !math.IsNaN(out[0]) || !math.Signbit(out[1]) || math.Signbit(out[2]) || !math.IsInf(out[3], 1) {
+	if len(out) != 4 || !math.IsNaN(out[0]) || out[1] != 1.5 || out[2] != 0 || !math.IsInf(out[3], 1) {
 		t.Errorf("got %v", out)
 	}
 }

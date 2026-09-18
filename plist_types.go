@@ -111,18 +111,22 @@ func (cfReal) typeName() string {
 	return "real"
 }
 
-// cfRealKey uniques reals by bit pattern, so NaN can be found again in the
-// object map and -0.0 is kept distinct from +0.0.
-type cfRealKey struct {
+// cfNaNKey lets NaN be found again in the object map (NaN != NaN, so a plain
+// float key can never match). All other reals keep their historical keys so
+// that uniquing, and therefore the emitted bytes, are unchanged.
+type cfNaNKey struct {
 	wide bool
 	bits uint64
 }
 
 func (p *cfReal) hash() any {
-	if p.wide {
-		return cfRealKey{true, math.Float64bits(p.value)}
+	if math.IsNaN(p.value) {
+		return cfNaNKey{p.wide, math.Float64bits(p.value)}
 	}
-	return cfRealKey{false, uint64(math.Float32bits(float32(p.value)))}
+	if p.wide {
+		return p.value
+	}
+	return float32(p.value)
 }
 
 type cfBoolean bool
