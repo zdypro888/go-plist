@@ -417,7 +417,7 @@ func (p *textPlistParser) parseGNUStepValue() cfValue {
 
 	if typ != 'I' && typ != 'R' && typ != 'B' && typ != 'D' {
 		// early out: no need to collect the value if we'll fail to understand it
-		p.error("unknown GNUStep extended value type `" + string(typ) + "'")
+		p.error("unknown GNUStep extended value type `%c'", typ)
 	}
 
 	if p.peek() == '"' { // <*x"
@@ -462,7 +462,7 @@ func (p *textPlistParser) parseGNUStepValue() cfValue {
 	case 'D':
 		t, err := time.Parse(textPlistTimeLayout, v)
 		if err != nil {
-			p.error(err.Error())
+			p.error("%v", err)
 		}
 
 		return cfDate(t.In(time.UTC))
@@ -489,7 +489,7 @@ func (p *textPlistParser) parseGNUStepBase64() cfData {
 	filtered := strings.Map(base64ValidChars.Map, v)
 	data, err := base64.StdEncoding.DecodeString(filtered)
 	if err != nil {
-		p.error("invalid GNUStep base64 data: " + err.Error())
+		p.error("invalid GNUStep base64 data: %v", err)
 	}
 	return cfData(data)
 }
