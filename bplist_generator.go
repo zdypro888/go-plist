@@ -34,12 +34,27 @@ func bplistValueShouldUnique(pval cfValue) bool {
 
 type bplistGenerator struct {
 	writer   *countedWriter
+	scratch  [8]byte
 	objmap   map[any]uint64 // maps pValue.hash()es to object locations
+	strmap   map[string]uint64
 	objtable []cfValue
 	trailer  bplistTrailer
 }
 
 func (p *bplistGenerator) flattenPlistValue(pval cfValue) {
+	// Strings (every dictionary key and most values) get their own typed map:
+	// boxing each one into an `any` key was a quarter of all allocations. A
+	// string key can never equal a key of another type, so uniquing and the
+	// order of the object table are unchanged.
+	if str, ok := pval.(cfString); ok {
+		if _, seen := p.strmap[string(str)]; seen {
+			return
+		}
+		p.strmap[string(str)] = uint64(len(p.objtable))
+		p.objtable = append(p.objtable, pval)
+		return
+	}
+
 	key := pval.hash()
 	if bplistValueShouldUnique(pval) {
 		if _, ok := p.objmap[key]; ok {
@@ -79,6 +94,10 @@ func (p *bplistGenerator) flattenPlistValue(pval cfValue) {
 }
 
 func (p *bplistGenerator) indexForPlistValue(pval cfValue) (uint64, bool) {
+	if str, isString := pval.(cfString); isString {
+		v, ok := p.strmap[string(str)]
+		return v, ok
+	}
 	v, ok := p.objmap[pval.hash()]
 	return v, ok
 }
@@ -86,6 +105,7 @@ func (p *bplistGenerator) indexForPlistValue(pval cfValue) (uint64, bool) {
 func (p *bplistGenerator) generateDocument(root cfValue) error {
 	p.objtable = make([]cfValue, 0, 16)
 	p.objmap = make(map[any]uint64)
+	p.strmap = make(map[string]uint64)
 	p.flattenPlistValue(root)
 
 	p.trailer.NumObjects = uint64(len(p.objtable))
@@ -149,21 +169,37 @@ func (p *bplistGenerator) writePlistValue(pval cfValue) error {
 	}
 }
 
-func (p *bplistGenerator) writeSizedInt(n uint64, nbytes int) error {
-	var val any
+// put writes b with a single Write call, exactly as binary.Write did for each
+// value, but without going through reflection.
+func (p *bplistGenerator) put(b []byte) error {
+	_, err := p.writer.Write(b)
+	return err
+}
+
+func (p *bplistGenerator) putByte(b uint8) error {
+	p.scratch[0] = b
+	return p.put(p.scratch[:1])
+}
+
+// putUint writes the low nbytes (1, 2, 4 or 8) of n in big-endian order.
+func (p *bplistGenerator) putUint(n uint64, nbytes int) error {
 	switch nbytes {
 	case 1:
-		val = uint8(n)
+		p.scratch[0] = uint8(n)
 	case 2:
-		val = uint16(n)
+		binary.BigEndian.PutUint16(p.scratch[:], uint16(n))
 	case 4:
-		val = uint32(n)
+		binary.BigEndian.PutUint32(p.scratch[:], uint32(n))
 	case 8:
-		val = n
+		binary.BigEndian.PutUint64(p.scratch[:], n)
 	default:
 		return errors.New("illegal integer size")
 	}
-	return binary.Write(p.writer, binary.BigEndian, val)
+	return p.put(p.scratch[:nbytes])
+}
+
+func (p *bplistGenerator) writeSizedInt(n uint64, nbytes int) error {
+	return p.putUint(n, nbytes)
 }
 
 func (p *bplistGenerator) writeBoolTag(v bool) error {
@@ -171,34 +207,34 @@ func (p *bplistGenerator) writeBoolTag(v bool) error {
 	if v {
 		tag = bpTagBoolTrue
 	}
-	return binary.Write(p.writer, binary.BigEndian, tag)
+	return p.putByte(tag)
 }
 
 func (p *bplistGenerator) writeIntTag(signed bool, n uint64) error {
 	var tag uint8
-	var val any
+	var nbytes int
 	switch {
 	case n <= uint64(0xff):
-		val = uint8(n)
+		nbytes = 1
 		tag = bpTagInteger // | 0x0
 	case n <= uint64(0xffff):
-		val = uint16(n)
+		nbytes = 2
 		tag = bpTagInteger | 0x1
 	case n <= uint64(0xffffffff):
-		val = uint32(n)
+		nbytes = 4
 		tag = bpTagInteger | 0x2
 	case n > uint64(0x7fffffffffffffff) && !signed:
 		// 64-bit values are always *signed* in format 00.
 		// Any unsigned value that doesn't intersect with the signed
 		// range must be sign-extended and stored as a SInt128
-		val = n
+		nbytes = 8
 		tag = bpTagInteger | 0x4
 	default:
-		val = n
+		nbytes = 8
 		tag = bpTagInteger | 0x3
 	}
 
-	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+	if err := p.putByte(tag); err != nil {
 		return err
 	}
 	if tag&0xF == 0x4 {
@@ -206,35 +242,34 @@ func (p *bplistGenerator) writeIntTag(signed bool, n uint64) error {
 		// we'll just fake the top half. We only got here because
 		// we had an unsigned 64-bit int that didn't fit,
 		// so sign extend it with zeroes.
-		if err := binary.Write(p.writer, binary.BigEndian, uint64(0)); err != nil {
+		if err := p.putUint(0, 8); err != nil {
 			return err
 		}
 	}
-	return binary.Write(p.writer, binary.BigEndian, val)
+	return p.putUint(n, nbytes)
 }
 
 func (p *bplistGenerator) writeUIDTag(u UID) error {
 	nbytes := bplistMinimumIntSize(uint64(u))
 	tag := bpTagUID | uint8((nbytes - 1))
 
-	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+	if err := p.putByte(tag); err != nil {
 		return err
 	}
 	return p.writeSizedInt(uint64(u), nbytes)
 }
 
 func (p *bplistGenerator) writeRealTag(n float64, bits int) error {
-	var tag uint8 = bpTagReal | 0x3
-	var val any = n
 	if bits == 32 {
-		val = float32(n)
-		tag = bpTagReal | 0x2
+		if err := p.putByte(bpTagReal | 0x2); err != nil {
+			return err
+		}
+		return p.putUint(uint64(math.Float32bits(float32(n))), 4)
 	}
-
-	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+	if err := p.putByte(bpTagReal | 0x3); err != nil {
 		return err
 	}
-	return binary.Write(p.writer, binary.BigEndian, val)
+	return p.putUint(math.Float64bits(n), 8)
 }
 
 func (p *bplistGenerator) writeDateTag(t time.Time) error {
@@ -248,10 +283,10 @@ func (p *bplistGenerator) writeDateTag(t time.Time) error {
 	}
 	val -= 978307200 // Adjust to Apple Epoch
 
-	if err := binary.Write(p.writer, binary.BigEndian, tag); err != nil {
+	if err := p.putByte(tag); err != nil {
 		return err
 	}
-	return binary.Write(p.writer, binary.BigEndian, val)
+	return p.putUint(math.Float64bits(val), 8)
 }
 
 func (p *bplistGenerator) writeCountedTag(tag uint8, count uint64) error {
@@ -262,7 +297,7 @@ func (p *bplistGenerator) writeCountedTag(tag uint8, count uint64) error {
 		marker |= uint8(count)
 	}
 
-	if err := binary.Write(p.writer, binary.BigEndian, marker); err != nil {
+	if err := p.putByte(marker); err != nil {
 		return err
 	}
 
@@ -276,7 +311,7 @@ func (p *bplistGenerator) writeDataTag(data []byte) error {
 	if err := p.writeCountedTag(bpTagData, uint64(len(data))); err != nil {
 		return err
 	}
-	return binary.Write(p.writer, binary.BigEndian, data)
+	return p.put(data)
 }
 
 func (p *bplistGenerator) writeStringTag(str string) error {
@@ -286,14 +321,18 @@ func (p *bplistGenerator) writeStringTag(str string) error {
 			if err := p.writeCountedTag(bpTagUTF16String, uint64(len(utf16Runes))); err != nil {
 				return err
 			}
-			return binary.Write(p.writer, binary.BigEndian, utf16Runes)
+			encoded := make([]byte, 2*len(utf16Runes))
+			for i, unit := range utf16Runes {
+				binary.BigEndian.PutUint16(encoded[2*i:], unit)
+			}
+			return p.put(encoded)
 		}
 	}
 
 	if err := p.writeCountedTag(bpTagASCIIString, uint64(len(str))); err != nil {
 		return err
 	}
-	return binary.Write(p.writer, binary.BigEndian, []byte(str))
+	return p.put([]byte(str))
 }
 
 func (p *bplistGenerator) writeDictionaryTag(dict *cfDictionary) error {
@@ -305,7 +344,7 @@ func (p *bplistGenerator) writeDictionaryTag(dict *cfDictionary) error {
 	vals := make([]uint64, cnt*2)
 	for i, k := range dict.keys {
 		// invariant: keys have already been "uniqued" (as PStrings)
-		keyIdx, ok := p.objmap[cfString(k).hash()]
+		keyIdx, ok := p.strmap[k]
 		if !ok {
 			return errors.New("failed to find key " + k + " in object map during serialization")
 		}

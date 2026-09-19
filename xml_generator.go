@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/xml"
-	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -67,18 +66,18 @@ func (p *xmlPlistGenerator) generateDocument(root cfValue) error {
 	p.WriteString(xmlDOCTYPE)
 
 	if p.indent != "" {
-		p.WriteString(fmt.Sprintf("<%s version=\"1.0\">\n", xmlPlistTag))
+		p.WriteString("<" + xmlPlistTag + " version=\"1.0\">\n")
 		p.depth = 1 // Start with depth 1 for content inside plist
 	} else {
-		p.WriteString(fmt.Sprintf("<%s version=\"1.0\">", xmlPlistTag))
+		p.WriteString("<" + xmlPlistTag + " version=\"1.0\">")
 	}
 	if err := p.writePlistValue(root); err != nil {
 		return err
 	}
 	if p.indent != "" {
-		p.WriteString(fmt.Sprintf("</%s>\n", xmlPlistTag))
+		p.WriteString("</" + xmlPlistTag + ">\n")
 	} else {
-		p.WriteString(fmt.Sprintf("</%s>", xmlPlistTag))
+		p.WriteString("</" + xmlPlistTag + ">")
 	}
 	return p.Flush()
 }
@@ -87,19 +86,19 @@ func (p *xmlPlistGenerator) element(key string, value string) error {
 	p.writeIndent()
 	if len(value) == 0 {
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("<%s/>\n", key))
+			p.WriteString("<" + key + "/>\n")
 		} else {
-			p.WriteString(fmt.Sprintf("<%s/>", key))
+			p.WriteString("<" + key + "/>")
 		}
 	} else {
-		p.WriteString(fmt.Sprintf("<%s>", key))
+		p.WriteString("<" + key + ">")
 		if err := xml.EscapeText(p.Writer, []byte(value)); err != nil {
 			return err
 		}
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("</%s>\n", key))
+			p.WriteString("</" + key + ">\n")
 		} else {
-			p.WriteString(fmt.Sprintf("</%s>", key))
+			p.WriteString("</" + key + ">")
 		}
 	}
 	return nil
@@ -110,25 +109,25 @@ func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) error {
 	if len(dict.keys) == 0 {
 		p.writeIndent()
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("<%s/>\n", xmlDictTag))
+			p.WriteString("<" + xmlDictTag + "/>\n")
 		} else {
-			p.WriteString(fmt.Sprintf("<%s/>", xmlDictTag))
+			p.WriteString("<" + xmlDictTag + "/>")
 		}
 	} else {
 		p.writeIndent()
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("<%s>\n", xmlDictTag))
+			p.WriteString("<" + xmlDictTag + ">\n")
 		} else {
-			p.WriteString(fmt.Sprintf("<%s>", xmlDictTag))
+			p.WriteString("<" + xmlDictTag + ">")
 		}
 		p.depth++
 		for i, k := range dict.keys {
 			p.writeIndent()
 			if k == "" {
 				if p.indent != "" {
-					p.WriteString(fmt.Sprintf("<%s/>\n", xmlKeyTag))
+					p.WriteString("<" + xmlKeyTag + "/>\n")
 				} else {
-					p.WriteString(fmt.Sprintf("<%s/>", xmlKeyTag))
+					p.WriteString("<" + xmlKeyTag + "/>")
 				}
 			} else {
 				p.WriteString("<" + xmlKeyTag + ">")
@@ -146,9 +145,9 @@ func (p *xmlPlistGenerator) writeDictionary(dict *cfDictionary) error {
 		p.depth--
 		p.writeIndent()
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("</%s>\n", xmlDictTag))
+			p.WriteString("</" + xmlDictTag + ">\n")
 		} else {
-			p.WriteString(fmt.Sprintf("</%s>", xmlDictTag))
+			p.WriteString("</" + xmlDictTag + ">")
 		}
 	}
 	return nil
@@ -158,16 +157,16 @@ func (p *xmlPlistGenerator) writeArray(a *cfArray) error {
 	if len(a.values) == 0 {
 		p.writeIndent()
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("<%s/>\n", xmlArrayTag))
+			p.WriteString("<" + xmlArrayTag + "/>\n")
 		} else {
-			p.WriteString(fmt.Sprintf("<%s/>", xmlArrayTag))
+			p.WriteString("<" + xmlArrayTag + "/>")
 		}
 	} else {
 		p.writeIndent()
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("<%s>\n", xmlArrayTag))
+			p.WriteString("<" + xmlArrayTag + ">\n")
 		} else {
-			p.WriteString(fmt.Sprintf("<%s>", xmlArrayTag))
+			p.WriteString("<" + xmlArrayTag + ">")
 		}
 		p.depth++
 		for _, v := range a.values {
@@ -178,9 +177,9 @@ func (p *xmlPlistGenerator) writeArray(a *cfArray) error {
 		p.depth--
 		p.writeIndent()
 		if p.indent != "" {
-			p.WriteString(fmt.Sprintf("</%s>\n", xmlArrayTag))
+			p.WriteString("</" + xmlArrayTag + ">\n")
 		} else {
-			p.WriteString(fmt.Sprintf("</%s>", xmlArrayTag))
+			p.WriteString("</" + xmlArrayTag + ">")
 		}
 	}
 	return nil
@@ -211,7 +210,7 @@ func (p *xmlPlistGenerator) writePlistValue(pval cfValue) error {
 		dataBase64 := base64.StdEncoding.EncodeToString([]byte(pval))
 		if len(dataBase64) > 68 && p.indent != "" {
 			p.writeIndent()
-			p.WriteString(fmt.Sprintf("<%s>\n", xmlDataTag))
+			p.WriteString("<" + xmlDataTag + ">\n")
 			for i := 0; i < len(dataBase64); i += 68 {
 				p.writeIndent()
 				endoff := i + 68
@@ -222,7 +221,7 @@ func (p *xmlPlistGenerator) writePlistValue(pval cfValue) error {
 				p.WriteString("\n")
 			}
 			p.writeIndent()
-			p.WriteString(fmt.Sprintf("</%s>\n", xmlDataTag))
+			p.WriteString("</" + xmlDataTag + ">\n")
 
 		} else {
 			return p.element(xmlDataTag, dataBase64)
