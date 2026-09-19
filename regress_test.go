@@ -3,6 +3,8 @@ package plist
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"strings"
@@ -429,5 +431,49 @@ func TestStrictIntegersIsOptIn(t *testing.T) {
 	strict.StrictIntegers = true
 	if err := strict.Decode(&out); err != nil || out.Small != -7 || out.Count != 65535 {
 		t.Fatalf("strict, fitting values: %+v err %v", out, err)
+	}
+}
+
+// Decoding a dictionary into a struct takes the last value of a duplicated key,
+// for small dictionaries (linear lookup) and large ones (map) alike.
+func TestStructDecodeDuplicateKeysLastWins(t *testing.T) {
+	type S struct {
+		A string
+		B int
+	}
+	small := `<plist><dict><key>A</key><string>first</string><key>B</key><integer>1</integer><key>A</key><string>last</string></dict></plist>`
+	var s S
+	if _, err := Unmarshal([]byte(small), &s); err != nil || s.A != "last" || s.B != 1 {
+		t.Fatalf("small: %+v err %v", s, err)
+	}
+	var big strings.Builder
+	big.WriteString(`<plist><dict><key>A</key><string>first</string>`)
+	for i := 0; i < 2*smallDictionaryLookup; i++ {
+		fmt.Fprintf(&big, `<key>pad%d</key><integer>%d</integer>`, i, i)
+	}
+	big.WriteString(`<key>B</key><integer>2</integer><key>A</key><string>last</string></dict></plist>`)
+	s = S{}
+	if _, err := Unmarshal([]byte(big.String()), &s); err != nil || s.A != "last" || s.B != 2 {
+		t.Fatalf("large: %+v err %v", s, err)
+	}
+}
+
+// The incompatible-type error is now built only when returned; its content is unchanged.
+func TestIncompatibleTypeErrorContent(t *testing.T) {
+	type S struct{ N int }
+	for _, doc := range []string{
+		`<plist><dict><key>N</key><data>AQID</data></dict></plist>`,
+		`<plist><dict><key>N</key><array/></dict></plist>`,
+		`<plist><dict><key>N</key><date>2026-01-02T03:04:05Z</date></dict></plist>`,
+	} {
+		var s S
+		_, err := Unmarshal([]byte(doc), &s)
+		var typed *incompatibleDecodeTypeError
+		if !errors.As(err, &typed) {
+			t.Fatalf("%s: error %v is not an incompatible-type error", doc, err)
+		}
+		if typed.dest != reflect.TypeFor[int]() || typed.src == "" {
+			t.Errorf("%s: %+v", doc, typed)
+		}
 	}
 }

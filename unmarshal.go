@@ -88,6 +88,9 @@ func (p *Decoder) unmarshalLaxString(s string, val reflect.Value) error {
 	}
 }
 
+// smallDictionaryLookup: 键数不超过它的字典解码到 struct 时用线性查找。
+const smallDictionaryLookup = 16
+
 func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 	if pval == nil {
 		return nil
@@ -109,14 +112,19 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 		val.Set(reflect.ValueOf(v))
 		return nil
 	}
-	incompatibleTypeError := &incompatibleDecodeTypeError{val.Type(), pval.typeName()}
+	// 只有真的要返回时才构造这个错误：以前每解码一个值都先分配一个，
+	// 占解码路径全部分配的四成以上。类型和名字在这里取好，错误内容与之前完全相同。
+	destType, sourceName := val.Type(), pval.typeName()
+	incompatibleTypeError := func() error {
+		return &incompatibleDecodeTypeError{destType, sourceName}
+	}
 	// time.Time implements TextMarshaler, but we need to parse it as RFC3339
 	if date, ok := pval.(cfDate); ok {
 		if val.Type() == timeType {
 			p.unmarshalTime(date, val)
 			return nil
 		}
-		return incompatibleTypeError
+		return incompatibleTypeError()
 	}
 	if receiver, can := implementsInterface(val, plistUnmarshalerType); can {
 		return p.unmarshalPlistInterface(pval, receiver.(Unmarshaler))
@@ -126,7 +134,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 			if str, ok := pval.(cfString); ok {
 				return p.unmarshalTextInterface(str, receiver.(encoding.TextUnmarshaler))
 			}
-			return incompatibleTypeError
+			return incompatibleTypeError()
 		}
 	}
 	typ := val.Type()
@@ -161,7 +169,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 		if p.lax {
 			return p.unmarshalLaxString(string(pval), val)
 		}
-		return incompatibleTypeError
+		return incompatibleTypeError()
 	case *cfNumber:
 		switch val.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -181,7 +189,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 		case reflect.Bool:
 			val.SetBool(pval.value != 0)
 		default:
-			return incompatibleTypeError
+			return incompatibleTypeError()
 		}
 	case *cfReal:
 		switch val.Kind() {
@@ -196,21 +204,21 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 		case reflect.Bool:
 			val.SetBool(pval.value != 0)
 		default:
-			return incompatibleTypeError
+			return incompatibleTypeError()
 		}
 	case cfBoolean:
 		if val.Kind() == reflect.Bool {
 			val.SetBool(bool(pval))
 		} else {
-			return incompatibleTypeError
+			return incompatibleTypeError()
 		}
 	case cfData:
 		if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
-			return incompatibleTypeError
+			return incompatibleTypeError()
 		}
 
 		if typ.Elem().Kind() != reflect.Uint8 {
-			return incompatibleTypeError
+			return incompatibleTypeError()
 		}
 
 		b := []byte(pval)
@@ -234,7 +242,7 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 				val.SetUint(uint64(pval))
 			default:
-				return incompatibleTypeError
+				return incompatibleTypeError()
 			}
 		}
 	case *cfArray:
@@ -287,14 +295,28 @@ func (p *Decoder) unmarshalDictionary(dict *cfDictionary, val reflect.Value) err
 			return err
 		}
 
-		entries := make(map[string]cfValue, len(dict.keys))
-		for i, k := range dict.keys {
-			sval := dict.values[i]
-			entries[k] = sval
+		// 小字典直接从后往前线性查找（重复的 key 以最后一个为准，与建 map 的结果相同），
+		// 免去每解码一个 struct 就分配一个 map；大字典仍然建 map。
+		var entries map[string]cfValue
+		if len(dict.keys) > smallDictionaryLookup {
+			entries = make(map[string]cfValue, len(dict.keys))
+			for i, k := range dict.keys {
+				entries[k] = dict.values[i]
+			}
 		}
-
 		for _, finfo := range tinfo.Fields {
-			if err := p.unmarshal(entries[finfo.Name], finfo.Value(val)); err != nil {
+			var entry cfValue
+			if entries != nil {
+				entry = entries[finfo.Name]
+			} else {
+				for i := len(dict.keys) - 1; i >= 0; i-- {
+					if dict.keys[i] == finfo.Name {
+						entry = dict.values[i]
+						break
+					}
+				}
+			}
+			if err := p.unmarshal(entry, finfo.Value(val)); err != nil {
 				return err
 			}
 		}
@@ -369,7 +391,7 @@ func (p *Decoder) arrayInterface(a *cfArray) []any {
 }
 
 func (p *Decoder) dictionaryInterface(dict *cfDictionary) map[string]any {
-	out := make(map[string]any)
+	out := make(map[string]any, len(dict.keys))
 	for i, k := range dict.keys {
 		subv := dict.values[i]
 		out[k] = p.valueInterface(subv)

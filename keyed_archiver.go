@@ -100,6 +100,9 @@ type Archiver struct {
 	Top      *archiverTop `plist:"$top"`
 
 	depth int // current walk depth, see enter
+
+	primitiveIndex   map[any]UID // 基本类型对象 -> 第一次出现的下标，见 addObject
+	primitiveIndexed int         // Objects 中已经登记进索引的前缀长度
 }
 
 // ReadFromZipData 从压缩数据读取
@@ -135,6 +138,23 @@ func (a *Archiver) getClass(dict map[string]any) (*archiverClass, error) {
 }
 
 func (a *Archiver) addObject(obj any) UID {
+	// 去重原来对每个新对象都用 cmp.Equal 线性扫描全部已有对象，整体是二次方
+	// （4000 个整数 851 ms）。字符串、整数、浮点、布尔这些基本类型的 cmp.Equal 等价于
+	// 同类型的 ==，用 map 记录"第一次出现的下标"即可得到完全相同的结果；其它类型
+	// （类描述、NS 对象）仍然走原来的线性比较。
+	if primitiveArchiveObject(obj) {
+		a.indexPrimitives()
+		if i, ok := a.primitiveIndex[obj]; ok {
+			return i
+		}
+		a.Objects = append(a.Objects, obj)
+		uid := UID(len(a.Objects) - 1)
+		if !archiveNaN(obj) { // NaN 永远不等于任何值，和原来一样每次都追加
+			a.primitiveIndex[obj] = uid
+		}
+		a.primitiveIndexed = len(a.Objects)
+		return uid
+	}
 	for i, o := range a.Objects {
 		if cmp.Equal(o, obj) {
 			return UID(i)
@@ -142,6 +162,48 @@ func (a *Archiver) addObject(obj any) UID {
 	}
 	a.Objects = append(a.Objects, obj)
 	return UID(len(a.Objects) - 1)
+}
+
+func archiveNaN(obj any) bool {
+	f, ok := obj.(float64)
+	return ok && f != f
+}
+
+func primitiveArchiveObject(obj any) bool {
+	switch obj.(type) {
+	case string, int64, uint64, float64, bool:
+		return true
+	}
+	return false
+}
+
+// indexPrimitives 把 Objects 里还没登记过的基本类型对象补进索引（只记第一次出现的下标）。
+// Objects 是导出字段，可能被外部替换或截短；长度对不上，或者索引指向的内容已经变了，
+// 就整体重建。
+func (a *Archiver) indexPrimitives() {
+	stale := a.primitiveIndex == nil || a.primitiveIndexed > len(a.Objects)
+	if !stale {
+		for obj, i := range a.primitiveIndex {
+			if int(i) >= len(a.Objects) || a.Objects[i] != obj {
+				stale = true
+			}
+			break // 抽查一项即可发现整体替换；逐项校验会回到二次方
+		}
+	}
+	if stale {
+		a.primitiveIndex = make(map[any]UID)
+		a.primitiveIndexed = 0
+	}
+	for i := a.primitiveIndexed; i < len(a.Objects); i++ {
+		obj := a.Objects[i]
+		if !primitiveArchiveObject(obj) || archiveNaN(obj) {
+			continue
+		}
+		if _, seen := a.primitiveIndex[obj]; !seen {
+			a.primitiveIndex[obj] = UID(i)
+		}
+	}
+	a.primitiveIndexed = len(a.Objects)
 }
 
 // Unmarshal 序列化

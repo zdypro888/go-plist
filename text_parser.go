@@ -338,8 +338,8 @@ func (p *textPlistParser) parseUnquotedString() cfString {
 func (p *textPlistParser) parseDictionary(ignoreEof bool) cfValue {
 	//p.ignore() // ignore the {
 	var keypv cfValue
-	keys := make([]string, 0, 32)
-	values := make([]cfValue, 0, 32)
+	keys := make([]string, 0, 8)
+	values := make([]cfValue, 0, 8)
 outer:
 	for {
 		p.skipWhitespaceAndComments()
@@ -396,7 +396,7 @@ outer:
 // the ( has already been consumed
 func (p *textPlistParser) parseArray() *cfArray {
 	//p.ignore() // ignore the (
-	values := make([]cfValue, 0, 32)
+	values := make([]cfValue, 0, 8)
 outer:
 	for {
 		p.skipWhitespaceAndComments()
