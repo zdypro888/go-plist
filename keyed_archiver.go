@@ -195,6 +195,17 @@ func (a *Archiver) unmarshal(v any, val reflect.Value) error {
 		default:
 			return errors.New("not int field")
 		}
+	case int64:
+		// The plist decoder returns negative integers as int64; without this case
+		// an archive holding one failed with "type not assay".
+		switch val.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			val.SetInt(pval)
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			val.SetUint(uint64(pval))
+		default:
+			return errors.New("not int field")
+		}
 	case float64:
 		if val.Kind() == reflect.Float32 || val.Kind() == reflect.Float64 {
 			val.SetFloat(pval)

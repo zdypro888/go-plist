@@ -12,7 +12,8 @@ type archivedPoint struct {
 }
 
 func TestArchiverRoundTripStillWorks(t *testing.T) {
-	in := archivedPoint{Name: "p", X: 7, Tags: []string{"a", "b"}}
+	// X is negative: negative integers used to fail to decode.
+	in := archivedPoint{Name: "p", X: -7, Tags: []string{"a", "b"}}
 	var writer Archiver
 	data, err := writer.Marshal(&in)
 	if err != nil {
