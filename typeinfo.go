@@ -132,6 +132,15 @@ func (finfo *FieldInfo) Value(v reflect.Value) reflect.Value {
 			t := v.Type()
 			if t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Struct {
 				if v.IsNil() {
+					if !v.CanSet() {
+						// Marshalling a struct by value: the nil embedded pointer cannot
+						// be filled in (this used to panic). Read from a zero value
+						// instead, which yields the same output as marshalling a
+						// pointer to the struct does.
+						v = reflect.New(t.Elem()).Elem()
+						v = v.Field(x)
+						continue
+					}
 					v.Set(reflect.New(v.Type().Elem()))
 				}
 				v = v.Elem()

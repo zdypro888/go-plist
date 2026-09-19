@@ -335,3 +335,36 @@ func TestLargeUnsharedDocumentDecodes(t *testing.T) {
 		t.Fatalf("len=%d err=%v", len(out), err)
 	}
 }
+
+type EmbeddedInner struct {
+	X int
+	Y string
+}
+
+type embeddedOuter struct {
+	*EmbeddedInner
+	Z int
+}
+
+// Marshalling by value with a nil embedded pointer used to panic; it now gives
+// the same bytes as marshalling a pointer to the same struct.
+func TestNilEmbeddedPointerByValue(t *testing.T) {
+	for _, format := range []int{XMLFormat, BinaryFormat, OpenStepFormat} {
+		byPointer, err := Marshal(&embeddedOuter{Z: 3}, format)
+		if err != nil {
+			t.Fatal(err)
+		}
+		byValue, err := Marshal(embeddedOuter{Z: 3}, format)
+		if err != nil {
+			t.Fatalf("format %d: %v", format, err)
+		}
+		if !bytes.Equal(byPointer, byValue) {
+			t.Errorf("format %d: by value %q, by pointer %q", format, byValue, byPointer)
+		}
+	}
+	filled, _ := Marshal(embeddedOuter{EmbeddedInner: &EmbeddedInner{X: 1, Y: "y"}, Z: 3}, XMLFormat)
+	var out embeddedOuter
+	if _, err := Unmarshal(filled, &out); err != nil || out.EmbeddedInner == nil || out.X != 1 || out.Y != "y" || out.Z != 3 {
+		t.Fatalf("round trip: %+v %v", out, err)
+	}
+}
