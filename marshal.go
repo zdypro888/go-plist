@@ -71,6 +71,15 @@ func (p *Encoder) marshalStruct(val reflect.Value) (cfValue, error) {
 		if err != nil {
 			return nil, err
 		}
+		if cfv == nil {
+			// 行为变更说明: nil 指针/接口字段（且没有 omitempty）以前仍会写出 key 而没有
+			// 值：XML 是 <key>P</key> 后面直接跟下一个 <key>，OpenStep 是 "P=;"。属性列表
+			// 没有 null，这种输出没有任何解析器会理解成"P 为空"——Apple 的解析器把下一个
+			// key 当成 P 的值，其后的字段全部错位；P 是最后一个字段时整个文档解析失败；
+			// 二进制格式则直接 panic。现在与 map 里的 nil 值一致：省略该字段。
+			// 字段非 nil 时的输出完全不变。
+			continue
+		}
 		dict.keys = append(dict.keys, finfo.Name)
 		dict.values = append(dict.values, cfv)
 	}
@@ -144,14 +153,16 @@ func (p *Encoder) marshal(val reflect.Value) (cfValue, error) {
 			}
 			return cfData(bytes), nil
 		} else {
-			values := make([]cfValue, val.Len())
+			// nil 元素同样省略（以前 XML 本来就什么都不写，OpenStep 写成 "(a,,b,)"，
+			// 二进制格式 panic）。
+			values := make([]cfValue, 0, val.Len())
 			for i, length := 0, val.Len(); i < length; i++ {
 				subpval, err := p.marshal(val.Index(i))
 				if err != nil {
 					return nil, err
 				}
 				if subpval != nil {
-					values[i] = subpval
+					values = append(values, subpval)
 				}
 			}
 			return &cfArray{values}, nil

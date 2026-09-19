@@ -117,18 +117,40 @@ func TestBplistOmitsNilValues(t *testing.T) {
 	}
 }
 
-// Output for nil fields in XML must stay exactly what earlier releases wrote.
-func TestXMLNilFieldOutputUnchanged(t *testing.T) {
+// A nil pointer or interface field is omitted in every format. Writing the key
+// without a value made Apple's parser take the next key as its value.
+func TestNilFieldsAreOmittedInEveryFormat(t *testing.T) {
 	type S struct {
 		A string
 		P *int
+		I any
 		Z string
 	}
-	data, err := Marshal(S{A: "x", Z: "z"}, XMLFormat)
-	if err != nil {
-		t.Fatal(err)
+	for _, format := range []int{XMLFormat, BinaryFormat, OpenStepFormat, GNUStepFormat} {
+		data, err := Marshal(S{A: "x", Z: "z"}, format)
+		if err != nil {
+			t.Fatalf("format %d: %v", format, err)
+		}
+		var out map[string]any
+		if _, err := Unmarshal(data, &out); err != nil {
+			t.Fatalf("format %d: %v\n%s", format, err, data)
+		}
+		if !reflect.DeepEqual(out, map[string]any{"A": "x", "Z": "z"}) {
+			t.Errorf("format %d: got %v (%s)", format, out, data)
+		}
+		data, err = Marshal([]any{nil, "a", nil}, format)
+		if err != nil {
+			t.Fatalf("format %d: %v", format, err)
+		}
+		var arr []any
+		if _, err := Unmarshal(data, &arr); err != nil || !reflect.DeepEqual(arr, []any{"a"}) {
+			t.Errorf("format %d: got %v err %v (%s)", format, arr, err, data)
+		}
 	}
-	want := "<dict><key>A</key><string>x</string><key>P</key><key>Z</key><string>z</string></dict>"
+	// a field that is set is written exactly as before
+	n := 5
+	data, _ := Marshal(S{A: "x", P: &n, I: "i", Z: "z"}, XMLFormat)
+	want := "<dict><key>A</key><string>x</string><key>I</key><string>i</string><key>P</key><integer>5</integer><key>Z</key><string>z</string></dict>"
 	if !strings.Contains(string(data), want) {
 		t.Errorf("got %s", data)
 	}
