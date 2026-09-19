@@ -412,12 +412,12 @@ outer:
 			p.backup()
 		}
 
+		// 行为变更说明: 以前数组里解析出的空字符串会被丢弃（上游遗留，原注释是
+		// "TODO: Figure out why this was implemented"）。文本生成器会把空字符串写成 ""，
+		// 于是 []string{"", "a", ""} 编码成 ("",a,"",) 再解码就只剩 ["a"]；Apple 的解析器
+		// 也会保留空字符串。尾部逗号 "(a,b,)" 由上面的 ',' / ')' 分支处理，不经过这里，
+		// 结果不变。
 		pval := p.parsePlistValue() // whitespace is consumed within
-		if str, ok := pval.(cfString); ok && string(str) == "" {
-			// Empty strings in arrays are apparently skipped?
-			// TODO: Figure out why this was implemented.
-			continue
-		}
 		values = append(values, pval)
 	}
 	return &cfArray{values}

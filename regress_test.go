@@ -199,7 +199,7 @@ func TestBplistDataWithCollidingCRC(t *testing.T) {
 }
 
 func TestTextStringsRoundTrip(t *testing.T) {
-	in := []string{"hi 😀", "é", "中文", "tab\t", "q\"uote"}
+	in := []string{"", "hi 😀", "", "é", "中文", "tab\t", "q\"uote", ""}
 	for _, format := range []int{OpenStepFormat, GNUStepFormat} {
 		data, err := Marshal(in, format)
 		if err != nil {
@@ -366,5 +366,68 @@ func TestNilEmbeddedPointerByValue(t *testing.T) {
 	var out embeddedOuter
 	if _, err := Unmarshal(filled, &out); err != nil || out.EmbeddedInner == nil || out.X != 1 || out.Y != "y" || out.Z != 3 {
 		t.Fatalf("round trip: %+v %v", out, err)
+	}
+}
+
+func TestTextArrayTrailingCommaUnchanged(t *testing.T) {
+	var out []string
+	if _, err := Unmarshal([]byte(`(a,b,)`), &out); err != nil || !reflect.DeepEqual(out, []string{"a", "b"}) {
+		t.Fatalf("got %q err %v", out, err)
+	}
+	var withEmpty []string
+	if _, err := Unmarshal([]byte(`("", a, "")`), &withEmpty); err != nil || !reflect.DeepEqual(withEmpty, []string{"", "a", ""}) {
+		t.Fatalf("got %q err %v", withEmpty, err)
+	}
+}
+
+type secretValue int
+
+type withSecretEmbedded struct {
+	secretValue
+	Public string
+}
+
+// An embedded unexported non-struct type is private state: it used to be
+// written out by Marshal and made Unmarshal panic.
+func TestEmbeddedUnexportedValueIsSkipped(t *testing.T) {
+	data, err := Marshal(withSecretEmbedded{secretValue: 42, Public: "p"}, XMLFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "secretValue") || strings.Contains(string(data), "42") {
+		t.Errorf("private embedded value leaked: %s", data)
+	}
+	var out withSecretEmbedded
+	if _, err := Unmarshal(data, &out); err != nil || out.Public != "p" {
+		t.Fatalf("got %+v err %v", out, err)
+	}
+	leaky := []byte(`<plist><dict><key>secretValue</key><integer>7</integer><key>Public</key><string>q</string></dict></plist>`)
+	if _, err := Unmarshal(leaky, &out); err != nil || out.Public != "q" || out.secretValue != 42 && out.secretValue != 0 {
+		t.Fatalf("got %+v err %v", out, err)
+	}
+}
+
+func TestStrictIntegersIsOptIn(t *testing.T) {
+	type S struct {
+		Small int8
+		Count uint16
+	}
+	doc := []byte(`<plist><dict><key>Small</key><integer>300</integer><key>Count</key><integer>-1</integer></dict></plist>`)
+	// default: the historical truncating behaviour
+	var lenient S
+	if _, err := Unmarshal(doc, &lenient); err != nil || lenient.Small != 44 || lenient.Count != 65535 {
+		t.Fatalf("default: %+v err %v", lenient, err)
+	}
+	strict := NewDecoder(bytes.NewReader(doc))
+	strict.StrictIntegers = true
+	var out S
+	if err := strict.Decode(&out); err == nil {
+		t.Fatalf("strict: expected an error, got %+v", out)
+	}
+	fits := []byte(`<plist><dict><key>Small</key><integer>-7</integer><key>Count</key><integer>65535</integer></dict></plist>`)
+	strict = NewDecoder(bytes.NewReader(fits))
+	strict.StrictIntegers = true
+	if err := strict.Decode(&out); err != nil || out.Small != -7 || out.Count != 65535 {
+		t.Fatalf("strict, fitting values: %+v err %v", out, err)
 	}
 }

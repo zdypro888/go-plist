@@ -60,6 +60,12 @@ func GetTypeInfo(typ reflect.Type) (*TypeInfo, error) {
 				}
 			}
 
+			// 行为变更说明: 嵌入的未导出非 struct 类型（type secret int; struct{ secret }）
+			// 以前会被当成普通字段：Marshal 把这个私有值写了出去，Unmarshal 则因为无法
+			// 对未导出字段赋值而 panic。现在与 encoding/json 一致，跳过这种字段。
+			if f.Anonymous && f.PkgPath != "" {
+				continue
+			}
 			finfo, err := structFieldInfo(&f)
 			if err != nil {
 				return nil, err

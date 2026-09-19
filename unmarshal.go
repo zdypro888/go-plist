@@ -3,6 +3,7 @@ package plist
 import (
 	"encoding"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"time"
@@ -164,8 +165,14 @@ func (p *Decoder) unmarshal(pval cfValue, val reflect.Value) error {
 	case *cfNumber:
 		switch val.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if p.StrictIntegers && (val.OverflowInt(int64(pval.value)) || (!pval.signed && pval.value > math.MaxInt64)) {
+				return fmt.Errorf("plist: integer %s does not fit in %v", pval.text(), val.Type())
+			}
 			val.SetInt(int64(pval.value))
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			if p.StrictIntegers && (pval.signed || val.OverflowUint(pval.value)) {
+				return fmt.Errorf("plist: integer %s does not fit in %v", pval.text(), val.Type())
+			}
 			val.SetUint(pval.value)
 		case reflect.Float32, reflect.Float64:
 			val.SetFloat(float64(pval.value))
@@ -427,4 +434,12 @@ func unmarshalMapKeyFunc(keyType reflect.Type) (func(string) (reflect.Value, err
 	default:
 		return nil, fmt.Errorf("plist: unsupported map key type %v", keyType)
 	}
+}
+
+// text formats the number the way it was written in the document.
+func (p *cfNumber) text() string {
+	if p.signed {
+		return strconv.FormatInt(int64(p.value), 10)
+	}
+	return strconv.FormatUint(p.value, 10)
 }

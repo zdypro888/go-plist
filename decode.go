@@ -12,6 +12,14 @@ type Decoder struct {
 	// the format of the most-recently-decoded property list
 	Format int
 
+	// StrictIntegers makes decoding fail when an integer does not fit the
+	// destination field (300 into an int8, a negative number into a uint, a
+	// value above MaxInt64 into an int64). The default, false, keeps the
+	// historical behaviour of storing the truncated value: a server response
+	// may carry an oversized value in a field nobody reads, and turning that
+	// into a decoding failure would break a flow that works today.
+	StrictIntegers bool
+
 	reader io.ReadSeeker
 	lax    bool
 
