@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -310,7 +311,9 @@ func (a *Archiver) unmarshal(v any, val reflect.Value) error {
 			if !class.isDictionary() {
 				return errors.New("not map field")
 			}
-			a.unmarshalMap(pval, val)
+			if err := a.unmarshalMap(pval, val); err != nil {
+				return err
+			}
 		case reflect.Array:
 			if class.isUUID() && val.Type() == archiverUUIDType {
 				uid, err := uuid.FromBytes(pval["NS.uuidbytes"].([]byte))
@@ -355,10 +358,66 @@ func (a *Archiver) unmarshal(v any, val reflect.Value) error {
 	}
 	return nil
 }
-func (a *Archiver) unmarshalMap(pval map[string]any, val reflect.Value) {
-	for k, v := range pval {
-		val.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+
+// unmarshalMap 把一个 NSDictionary 归档对象 ({$class, NS.keys, NS.objects}) 解码到 map。
+//
+// 行为变更说明: 以前直接把归档对象本身的键值（"$class"、"NS.keys"、"NS.objects"）复制进
+// 目标 map，得到的是 map[$class:3 NS.keys:[2] NS.objects:[1]] 这样的内容，而不是字典的
+// 内容。现在按 NS.keys / NS.objects 逐对解析 UID，键解码到 map 的键类型，值递归解码到
+// map 的值类型，与 unmarshalStruct 对同一种归档对象的处理一致。
+func (a *Archiver) unmarshalMap(pval map[string]any, val reflect.Value) error {
+	tab := &archiverTable{}
+	if err := Dictionary(pval).Unmarshal(tab); err != nil {
+		return err
 	}
+	if len(tab.Keys) != len(tab.Objects) {
+		return fmt.Errorf("archived dictionary has %d keys but %d objects", len(tab.Keys), len(tab.Objects))
+	}
+	mapType := val.Type()
+	if val.IsNil() {
+		val.Set(reflect.MakeMapWithSize(mapType, len(tab.Keys)))
+	}
+	for i, keyUID := range tab.Keys {
+		key := reflect.New(mapType.Key())
+		if err := a.unmarshal(a.Objects[keyUID], key); err != nil {
+			return err
+		}
+		value := reflect.New(mapType.Elem())
+		item := tab.Objects[i]
+		if uid, ok := item.(UID); ok {
+			item = a.Objects[uid]
+		}
+		if err := a.unmarshal(item, value); err != nil {
+			return err
+		}
+		val.SetMapIndex(key.Elem(), value.Elem())
+	}
+	return nil
+}
+
+// marshalMap 把 map 编码为 NSMutableDictionary 归档对象，键按排序后的顺序写入，
+// 让同一个 map 每次得到相同的归档。
+func (a *Archiver) marshalMap(val reflect.Value) (UID, error) {
+	keys := val.MapKeys()
+	sort.Slice(keys, func(i, j int) bool { return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface()) })
+	table := &archiverTable{}
+	for _, key := range keys {
+		keyIndex, err := a.marshal(key)
+		if err != nil {
+			return 0, err
+		}
+		valueIndex, err := a.marshal(val.MapIndex(key))
+		if err != nil {
+			if err == errArchiverNilElem {
+				continue
+			}
+			return 0, err
+		}
+		table.Keys = append(table.Keys, keyIndex)
+		table.Objects = append(table.Objects, valueIndex)
+	}
+	table.Class = a.addObject(archiverMutableDictionaryClass)
+	return a.addObject(table), nil
 }
 func (a *Archiver) unmarshalDate(pval map[string]any, val reflect.Value) error {
 	date := &archiverDate{}
@@ -515,6 +574,11 @@ func (a *Archiver) marshal(val reflect.Value) (UID, error) {
 			return a.addObject(uid), nil
 		}
 		return 0, fmt.Errorf("unknow array: %v", val.Type())
+	case reflect.Map:
+		if val.IsNil() {
+			return 0, errArchiverNilElem
+		}
+		return a.marshalMap(val)
 	case reflect.Struct:
 		if val.Type() == archiverDateType {
 			date := &archiverDate{}

@@ -1,6 +1,7 @@
 package plist
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"math/rand"
@@ -118,5 +119,48 @@ func BenchmarkArchiverAddObject(b *testing.B) {
 		for i := 0; i < 4000; i++ {
 			archive.addObject(int64(i))
 		}
+	}
+}
+
+type archivedWithMap struct {
+	Name   string
+	Counts map[string]int64
+	Nested map[string]archivedPoint
+}
+
+// Maps used to be unsupported when archiving and decoded to the raw archive
+// dictionary ({$class, NS.keys, NS.objects}) when unarchiving.
+func TestArchiverMapRoundTrip(t *testing.T) {
+	in := archivedWithMap{
+		Name:   "m",
+		Counts: map[string]int64{"a": 1, "b": -2, "c": 300},
+		Nested: map[string]archivedPoint{"p": {Name: "p", X: 7, Tags: []string{"t"}}},
+	}
+	var writer Archiver
+	data, err := writer.Marshal(&in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the same map archives to the same bytes every time
+	var again Archiver
+	data2, _ := again.Marshal(&in)
+	if !bytes.Equal(data, data2) {
+		t.Error("archiving the same map twice produced different bytes")
+	}
+	var reader Archiver
+	if err := reader.ReadFromData(data); err != nil {
+		t.Fatal(err)
+	}
+	var out archivedWithMap
+	if err := reader.Unmarshal(&out); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Fatalf("got %+v want %+v", out, in)
+	}
+	// the archived form is a real NSDictionary that maps to a plain map too
+	var generic struct{ Counts map[string]int64 }
+	if err := reader.Unmarshal(&generic); err != nil || !reflect.DeepEqual(generic.Counts, in.Counts) {
+		t.Fatalf("generic: %+v %v", generic, err)
 	}
 }
