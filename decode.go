@@ -7,10 +7,6 @@ import (
 	"reflect"
 )
 
-type parser interface {
-	parseDocument() (cfValue, error)
-}
-
 // A Decoder reads a property list from an input stream.
 type Decoder struct {
 	// the format of the most-recently-decoded property list

@@ -46,9 +46,8 @@ var xmlKeyEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;")
 type xmlPlistGenerator struct {
 	*bufio.Writer
 
-	indent     string
-	depth      int
-	putNewline bool
+	indent string
+	depth  int
 }
 
 func (p *xmlPlistGenerator) Indent(i string) {
